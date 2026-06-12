@@ -22,7 +22,7 @@ The AJ159 bootloader is MULTI-PROTOCOL (discovered via ry_upgrade.exe reversing)
 
 PREREQUISITES
 -------------
-  - Mouse MUST be in boot mode (VID 0x0C4F / PID 0x0FB9, i.e. 3151:4025 decimal)
+  - Mouse MUST be in boot mode (VID 0x3151 / PID 0x4025)
   - Python 3.7+
   - hidapi package: pip install hidapi
   - Windows: run as Administrator if device access fails
@@ -71,8 +71,8 @@ from typing import Optional
 # ===========================================================================
 # Device constants
 # ===========================================================================
-BOOT_VID = 0x0C4F   # 3151 decimal (Compx)
-BOOT_PID = 0x0FB9   # 4025 decimal (boot mode PID)
+BOOT_VID = 0x3151   # 12625 decimal - Ajazz/RuiYu VID
+BOOT_PID = 0x4025   # 16421 decimal - boot mode PID
 BOOT_USAGE_PAGE = 0xFF01
 BOOT_USAGE = 0x01
 
@@ -212,7 +212,7 @@ def open_boot_device(hid_module, verbose: bool = False, vid: int = BOOT_VID, pid
         all_devs = hid_module.enumerate()
         found_any = False
         for d in all_devs:
-            if d['vendor_id'] in (0x3151, 0x0C4F, 0x0C45):
+            if d['vendor_id'] in (0x3151, 0x0C4F, 0x0C45, 3151):
                 found_any = True
                 print(f"  VID:{d['vendor_id']:#06x} PID:{d['product_id']:#06x} "
                       f"iface={d.get('interface_number')} "
