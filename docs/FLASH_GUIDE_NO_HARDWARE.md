@@ -29,11 +29,14 @@ Many Chinese OEM bootloaders:
 ### Prerequisites
 - Windows PC (the tool is a Windows x86 EXE)
 - USB cable connecting the mouse (wired mode)
-- The original `ry_upgrade.exe` as backup (already in the firmware ZIP)
+- The **official, unmodified** `ry_upgrade.exe` as a recovery backup. This repo no
+  longer ships the original firmware archive — download the official MV302 package
+  (`【AJ159 APEX】_MV302_DV233_Firmware`) from [a-jazz.com](https://www.a-jazz.com/en/h-col-141.html)
+  before you start. It contains the pristine `ry_upgrade.exe`.
 
 ### Procedure
 
-1. **BACKUP FIRST**: Keep the original firmware ZIP. If anything goes wrong, you can reflash the original.
+1. **BACKUP FIRST**: Download and keep the official firmware package from a-jazz.com (see Prerequisites). If anything goes wrong, you can reflash the original with its unmodified `ry_upgrade.exe`.
 
 2. **Close all mouse software**: 
    - Close the Ajazz/Attack Shark driver software
@@ -63,7 +66,7 @@ Many Chinese OEM bootloaders:
    - If that fails too, try `ry_upgrade_NOSIG.exe`
 
 7. **If ALL three fail**:
-   - Reflash original firmware using the original `ry_upgrade.exe` to be safe
+   - Reflash original firmware using the official, unmodified `ry_upgrade.exe` from the a-jazz.com package (see Prerequisites) to be safe
    - The bootloader enforces RSA — you'd need SWD or to contact Ajazz
 
 ### What happens during the upgrade
