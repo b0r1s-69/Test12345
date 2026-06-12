@@ -1,40 +1,39 @@
 #!/usr/bin/env python3
 """
-bootloader_probe.py - Phase 1: Read-Only Bootloader Protocol Probe
-===================================================================
-Ajazz AJ159 APEX Gaming Mouse - Dual-Protocol Bootloader Discovery
+bootloader_probe.py - Phase 1: Multi-Transport Bootloader Protocol Probe
+=========================================================================
+Ajazz AJ159 APEX Gaming Mouse - Exhaustive HID Communication Discovery
 
 WHAT THIS DOES
 --------------
-This script probes the AJ159's MCUboot bootloader using BOTH discovered
-communication protocols to gather information about the device state. It is
-strictly READ-ONLY: no erase, write, or flash commands are sent.
+This script probes the AJ159's bootloader using EVERY possible HID
+communication pattern to find where the device sends its responses.
 
-TRANSPORT: HID FEATURE REPORTS
-------------------------------
-The ry_upgrade.exe tool (confirmed via binary string analysis) uses:
-  - HidD_SetFeature (Windows API) to SEND commands
-  - HidD_GetFeature (Windows API) to READ responses
+KEY DISCOVERY (from prior attempts):
+  - send_feature_report() SUCCEEDS (returns 65) = device IS receiving data
+  - get_feature_report() returns all zeros = response is NOT on control pipe
+  - hid_write + hid_read both timeout = not using output/input reports directly
 
-These correspond to:
-  - device.send_feature_report(data)  -- data starts with report_id byte
-  - device.get_feature_report(report_id, max_length)  -- returns bytes
+HYPOTHESIS: The device uses a HYBRID transport:
+  - SEND: via feature reports (SET_REPORT on control endpoint)
+  - RECEIVE: via interrupt IN endpoint (device.read())
 
-This is NOT the same as hid_write/hid_read (OUTPUT/INPUT reports), which use
-different USB endpoints and produced zero responses in testing.
+This is common in HID bootloaders where the host sends commands via control
+transfers but the device pushes responses as input reports on the interrupt pipe.
 
-As a fallback, the script also tries OUTPUT/INPUT reports in case some hidapi
-implementations route feature reports differently.
+TRANSPORT VARIANTS TESTED
+--------------------------
+1. HYBRID: send_feature_report() + device.read() [MOST LIKELY]
+2. READ-FIRST: device.read() before sending anything (check buffered data)
+3. FEATURE-ONLY: send_feature_report() + get_feature_report() (already failed)
+4. OUTPUT+INPUT: hid_write() + device.read() (already failed, retry anyway)
+5. REPORT ID 0x00: Some devices use no report ID or report ID 0
+6. REPORT IDs 0x01, 0x02, 0x03: Common default report IDs
+7. RAW MINIMAL: Just [report_id, 0x00...] to check if ANY read comes back
 
-The AJ159 bootloader is MULTI-PROTOCOL (discovered via ry_upgrade.exe reversing):
-
-  1. NORDICKEYBOARD protocol (Report ID 0x7F):
-     Magic: 55 AA 55 AA, followed by 00 00 + command byte
-     This is a raw Nordic OTA path that may bypass RSA signature checks.
-
-  2. MOUSE protocol (Report ID 0xF8):
-     Magic: 55 AA 55, followed by command byte
-     This is the MCUboot-validated path with RSA-2048 enforcement.
+PROTOCOLS TESTED (for each transport):
+  - NORDICKEYBOARD (Report ID 0x7F): Magic 55 AA 55 AA 00 00 + cmd
+  - MOUSE (Report ID 0xF8): Magic 55 AA 55 + cmd
 
 PREREQUISITES
 -------------
@@ -50,25 +49,6 @@ This script ONLY sends query/info commands. It never sends:
   - Erase commands (0x03, 0x83)
   - Write/data commands (0x04, 0x84)
   - Execute/reset commands (0x05, 0x85)
-
-HOW TO INTERPRET RESULTS
-------------------------
-NORDICKEYBOARD responses:
-  - If the device responds with data (not all zeros or timeout), the protocol
-    is active and the bootloader accepts this command set.
-  - Command 0x82: "Get Boot Info" - returns device ID, USB version, firmware info
-  - Command 0x01: Possibly "Init/Hello"
-  - Command 0x02: Possibly "Get Status"
-  - Command 0x80: Possibly "Start" or "Ping"
-  - Command 0x81: Possibly "Get Version"
-
-MOUSE responses:
-  - Command 0x82: "Get Boot ID" - returns MCUboot version, device info
-  - Response parsing: bytes 5+ contain version/ID data
-
-A non-zero, non-timeout response means the protocol path is ALIVE and the
-bootloader will accept further commands on that channel. This is the key
-finding needed for Phase 2 (actual firmware flash attempt).
 
 USAGE
 -----
@@ -99,33 +79,27 @@ REPORT_SIZE = 64     # Data payload is 64 bytes; feature reports are 65 (report_
 # ===========================================================================
 
 # NORDICKEYBOARD protocol: Report ID 0x7F
-# Format: [0x7F, 0x55, 0xAA, 0x55, 0xAA, 0x00, 0x00, cmd] + padding to 64 bytes
 NK_REPORT_ID = 0x7F
 NK_MAGIC = [0x55, 0xAA, 0x55, 0xAA]
-NK_PADDING = [0x00, 0x00]  # Two zero bytes between magic and command
+NK_PADDING = [0x00, 0x00]
 
 # MOUSE protocol: Report ID 0xF8
-# Format: [0xF8, 0x55, 0xAA, 0x55, cmd] + padding to 64 bytes
 MOUSE_REPORT_ID = 0xF8
 MOUSE_MAGIC = [0x55, 0xAA, 0x55]
 
-# Safe query commands only (no erase/write/execute)
+# Safe query commands only
 NK_QUERY_COMMANDS = {
     0x82: "Get Boot Info (primary query)",
     0x01: "Init / Hello",
     0x02: "Get Status",
     0x80: "Start / Ping",
     0x81: "Get Version",
-    0x83: "Get Address / Memory Info",  # NOTE: 0x83 in NK context is query, not erase
-    0x84: "Get Config",
 }
 
 MOUSE_QUERY_COMMANDS = {
     0x82: "Get Boot ID (primary query)",
     0x80: "Ping / Hello",
     0x81: "Get Version",
-    0x86: "Get Status",
-    0x87: "Get Info",
 }
 
 # Commands we NEVER send (safety list - these are destructive)
@@ -149,45 +123,58 @@ def hex_dump(data: bytes | list, prefix: str = "    ") -> str:
     return "\n".join(lines)
 
 
-def build_nk_packet(cmd: int) -> bytes:
+def build_nk_packet(cmd: int, report_id: int = NK_REPORT_ID) -> bytes:
     """
-    Build a 65-byte NORDICKEYBOARD query packet for feature reports.
-
-    Format: [report_id=0x7F] [55 AA 55 AA 00 00 cmd] [zeros to pad to 65 total]
-    The first byte is the report ID, required by send_feature_report().
-    Total size: 1 (report_id) + 64 (data) = 65 bytes.
+    Build a 65-byte NORDICKEYBOARD query packet.
+    Format: [report_id] [55 AA 55 AA 00 00 cmd] [zeros to pad to 65 total]
     """
     assert cmd not in DANGEROUS_COMMANDS, f"SAFETY: refusing to build dangerous cmd 0x{cmd:02x}"
     pkt = bytearray(REPORT_SIZE + 1)  # 65 bytes total
-    pkt[0] = NK_REPORT_ID
+    pkt[0] = report_id
     pkt[1:5] = NK_MAGIC
     pkt[5:7] = NK_PADDING
     pkt[7] = cmd
     return bytes(pkt)
 
 
-def build_mouse_packet(cmd: int) -> bytes:
+def build_mouse_packet(cmd: int, report_id: int = MOUSE_REPORT_ID) -> bytes:
     """
-    Build a 65-byte MOUSE query packet for feature reports.
-
-    Format: [report_id=0xF8] [55 AA 55 cmd] [zeros to pad to 65 total]
-    The first byte is the report ID, required by send_feature_report().
-    Total size: 1 (report_id) + 64 (data) = 65 bytes.
+    Build a 65-byte MOUSE query packet.
+    Format: [report_id] [55 AA 55 cmd] [zeros to pad to 65 total]
     """
     assert cmd not in DANGEROUS_COMMANDS, f"SAFETY: refusing to build dangerous cmd 0x{cmd:02x}"
     pkt = bytearray(REPORT_SIZE + 1)  # 65 bytes total
-    pkt[0] = MOUSE_REPORT_ID
+    pkt[0] = report_id
     pkt[1:4] = MOUSE_MAGIC
     pkt[4] = cmd
     return bytes(pkt)
 
 
+def build_raw_packet(report_id: int, payload: list = None) -> bytes:
+    """Build a 65-byte packet with just a report ID and optional payload."""
+    pkt = bytearray(REPORT_SIZE + 1)
+    pkt[0] = report_id
+    if payload:
+        for i, b in enumerate(payload[:REPORT_SIZE]):
+            pkt[1 + i] = b
+    return bytes(pkt)
+
+
 def is_meaningful_response(data: Optional[list | bytes]) -> bool:
-    """Check if a response contains any non-zero data (beyond report ID)."""
+    """Check if a response contains any non-zero data."""
     if not data:
         return False
-    # Skip first byte (report ID) and check if rest has content
-    return any(b != 0 for b in data[1:]) if len(data) > 1 else False
+    raw = bytes(data) if not isinstance(data, bytes) else data
+    # Check all bytes (including first, which might be report ID)
+    return any(b != 0 for b in raw)
+
+
+def is_meaningful_response_skip_first(data: Optional[list | bytes]) -> bool:
+    """Check if a response contains any non-zero data beyond the first byte."""
+    if not data:
+        return False
+    raw = bytes(data) if not isinstance(data, bytes) else data
+    return any(b != 0 for b in raw[1:]) if len(raw) > 1 else False
 
 
 # ===========================================================================
@@ -234,7 +221,6 @@ def open_boot_device(hid_module, verbose: bool = False, vid: int = BOOT_VID, pid
     """Open the boot-mode HID device. Returns (device_handle, device_info)."""
     dev_info = find_boot_device(hid_module, vid=vid, pid=pid)
     if not dev_info:
-        # List what IS present for debugging
         print(f"\nERROR: Boot device not found (VID={vid:#06x} PID={pid:#06x})")
         print("\nSearching all HID devices for Compx/RuiYu VIDs...")
         all_devs = hid_module.enumerate()
@@ -248,10 +234,7 @@ def open_boot_device(hid_module, verbose: bool = False, vid: int = BOOT_VID, pid
                       f"product={d.get('product_string', '')!r}")
         if not found_any:
             print("  (none found)")
-        print("\nIs the mouse in boot mode? (PID should be 4025/0x0FB9)")
-        print("If the mouse is in normal mode (PID 4026/0x0FBA), it needs to")
-        print("enter boot mode first. But per the briefing, it should already")
-        print("be stuck in boot mode.")
+        print("\nIs the mouse in boot mode? (PID should be 0x4025)")
         sys.exit(1)
 
     if verbose:
@@ -281,122 +264,119 @@ def open_boot_device(hid_module, verbose: bool = False, vid: int = BOOT_VID, pid
     return h, dev_info
 
 
-def send_and_read_feature(device, packet: bytes, report_id: int,
-                          timeout_ms: int = 1000,
-                          verbose: bool = False) -> Optional[bytes]:
+# ===========================================================================
+# Transport methods
+# ===========================================================================
+
+def transport_hybrid_feature_send_interrupt_read(device, packet: bytes,
+                                                  timeout_ms: int = 1000,
+                                                  verbose: bool = False) -> Optional[bytes]:
     """
-    Send a FEATURE report and read the response via get_feature_report.
+    HYBRID transport: send via feature report, read via interrupt IN.
 
-    This matches the Windows ry_upgrade.exe behavior:
-      - HidD_SetFeature -> hid.device.send_feature_report(data)
-      - HidD_GetFeature -> hid.device.get_feature_report(report_id, max_length)
+    This is the MOST LIKELY correct pattern for this bootloader:
+      - Host sends command via SET_REPORT (control endpoint) = send_feature_report()
+      - Device responds via interrupt IN endpoint = device.read()
 
-    The packet must already have report_id as first byte.
-    For feature reports, the total buffer is REPORT_SIZE + 1 (report_id + 64 data bytes).
-
-    After sending, we try reading with BOTH report IDs (0x7F and 0xF8) since
-    the device might respond on a different report ID than what was sent.
+    Many HID bootloaders work this way because:
+      - The control endpoint (feature reports) is reliable for host->device
+      - The interrupt pipe is efficient for device->host async responses
     """
-    FEATURE_BUF_SIZE = REPORT_SIZE + 1  # 65 bytes: report_id + 64 data
-
-    # Ensure packet is exactly 65 bytes (report_id + 64 bytes of data)
-    if len(packet) < FEATURE_BUF_SIZE:
-        packet = packet + b'\x00' * (FEATURE_BUF_SIZE - len(packet))
-
-    # Send via SetFeature
     try:
         bytes_sent = device.send_feature_report(packet)
         if verbose:
-            print(f"      [feature] send_feature_report returned: {bytes_sent}")
+            print(f"        send_feature_report returned: {bytes_sent}")
     except Exception as e:
-        raise RuntimeError(f"send_feature_report failed: {e}")
+        if verbose:
+            print(f"        send_feature_report FAILED: {e}")
+        return None
 
-    # Small delay to let the device process
-    time.sleep(0.01)
+    # Give device time to process and queue response
+    time.sleep(0.02)
 
-    # Try reading response with the SAME report ID first
-    report_ids_to_try = [report_id]
-    # Also try the OTHER report ID as fallback
-    other_id = MOUSE_REPORT_ID if report_id == NK_REPORT_ID else NK_REPORT_ID
-    report_ids_to_try.append(other_id)
-
-    for rid in report_ids_to_try:
-        try:
-            resp = device.get_feature_report(rid, FEATURE_BUF_SIZE)
-            if resp and len(resp) > 0:
-                resp_bytes = bytes(resp)
-                if is_meaningful_response(resp_bytes):
-                    if verbose and rid != report_id:
-                        print(f"      [feature] Got response on ALTERNATE report ID 0x{rid:02x}!")
-                    return resp_bytes
-        except Exception as e:
-            if verbose:
-                print(f"      [feature] get_feature_report(0x{rid:02x}) error: {e}")
+    # Read from interrupt IN endpoint
+    try:
+        resp = device.read(REPORT_SIZE + 1, timeout_ms=timeout_ms)
+        if resp:
+            return bytes(resp)
+    except Exception as e:
+        if verbose:
+            print(f"        device.read() error: {e}")
 
     return None
 
 
-def send_and_read_output(device, packet: bytes, timeout_ms: int = 1000,
-                         verbose: bool = False) -> Optional[bytes]:
+def transport_feature_only(device, packet: bytes, report_id: int,
+                           timeout_ms: int = 1000,
+                           verbose: bool = False) -> Optional[bytes]:
     """
-    Fallback: Send via OUTPUT report (hid_write) and read via INPUT report (hid_read).
+    FEATURE-ONLY transport: send and receive via feature reports.
+    (Already confirmed: send succeeds, get returns zeros. Kept for completeness.)
+    """
+    try:
+        device.send_feature_report(packet)
+    except Exception as e:
+        if verbose:
+            print(f"        send_feature_report FAILED: {e}")
+        return None
 
-    This is the legacy approach that did NOT work on the actual device (all timeouts),
-    but is kept as a fallback in case some hidapi implementations route feature reports
-    through the output/input path.
+    time.sleep(0.01)
+
+    # Try get_feature_report with same and alternate report IDs
+    for rid in [report_id, 0x7F, 0xF8, 0x01, 0x02, 0x00]:
+        try:
+            resp = device.get_feature_report(rid, REPORT_SIZE + 1)
+            if resp and is_meaningful_response_skip_first(bytes(resp)):
+                if verbose:
+                    print(f"        get_feature_report(0x{rid:02x}) has data!")
+                return bytes(resp)
+        except Exception:
+            pass
+
+    return None
+
+
+def transport_output_input(device, packet: bytes,
+                           timeout_ms: int = 1000,
+                           verbose: bool = False) -> Optional[bytes]:
+    """
+    OUTPUT/INPUT transport: send via hid_write, read via hid_read.
+    (Previously timed out, but retrying with different packet formats.)
     """
     try:
         device.write(packet)
     except Exception as e:
-        raise RuntimeError(f"hid_write failed: {e}")
+        if verbose:
+            print(f"        hid_write FAILED: {e}")
+        return None
 
-    # Read response via input report
+    time.sleep(0.02)
+
     try:
-        resp = device.read(REPORT_SIZE, timeout_ms=timeout_ms)
+        resp = device.read(REPORT_SIZE + 1, timeout_ms=timeout_ms)
         if resp:
             return bytes(resp)
-    except Exception:
-        pass
+    except Exception as e:
+        if verbose:
+            print(f"        device.read() error: {e}")
 
     return None
 
 
-def send_and_read(device, packet: bytes, report_id: int,
-                  timeout_ms: int = 1000,
-                  verbose: bool = False) -> Optional[bytes]:
+def transport_read_only(device, timeout_ms: int = 1000,
+                        verbose: bool = False) -> Optional[bytes]:
     """
-    Send a command and read response, trying FEATURE reports first (correct method),
-    then falling back to OUTPUT/INPUT reports if feature reports fail entirely.
-
-    The device (confirmed via ry_upgrade.exe reversing) uses:
-      - HidD_SetFeature to send commands
-      - HidD_GetFeature to read responses
-    These map to send_feature_report() / get_feature_report() in hidapi.
-
-    Returns the response bytes, or None if no response.
+    READ-FIRST: just read without sending anything.
+    The device might have buffered data waiting from a previous send,
+    or it might spontaneously send status reports.
     """
-    # Primary method: Feature reports (matches ry_upgrade.exe behavior)
     try:
-        resp = send_and_read_feature(device, packet, report_id,
-                                     timeout_ms=timeout_ms, verbose=verbose)
-        if resp is not None:
-            return resp
-    except RuntimeError as e:
+        resp = device.read(REPORT_SIZE + 1, timeout_ms=timeout_ms)
+        if resp:
+            return bytes(resp)
+    except Exception as e:
         if verbose:
-            print(f"      [!] Feature report method failed: {e}")
-            print(f"      [!] Trying OUTPUT/INPUT fallback...")
-
-    # Fallback: Output/Input reports (different USB endpoints)
-    # This did NOT work in testing (all timeouts) but kept for completeness
-    try:
-        resp = send_and_read_output(device, packet, timeout_ms=timeout_ms,
-                                    verbose=verbose)
-        if resp is not None:
-            if verbose:
-                print(f"      [*] Got response via OUTPUT/INPUT fallback!")
-            return resp
-    except RuntimeError:
-        pass
+            print(f"        device.read() error: {e}")
 
     return None
 
@@ -404,145 +384,424 @@ def send_and_read(device, packet: bytes, report_id: int,
 # ===========================================================================
 # Probe routines
 # ===========================================================================
-def probe_nordickeyboard(device, timeout_ms: int, verbose: bool) -> dict:
-    """Probe the NORDICKEYBOARD (0x7F) protocol path. Returns results dict."""
-    results = {}
+
+def probe_read_first(device, timeout_ms: int, verbose: bool) -> list:
+    """
+    VARIANT 1: Try reading FIRST before sending anything.
+    The device might have buffered data from prior send_feature_report calls,
+    or it might send periodic status reports on its own.
+    """
+    results = []
     print("=" * 70)
-    print(" NORDICKEYBOARD Protocol Probe (Report ID 0x7F)")
-    print(" Magic: 55 AA 55 AA 00 00 + cmd")
-    print(" Transport: FEATURE reports (HidD_SetFeature / HidD_GetFeature)")
+    print(" VARIANT 1: READ-FIRST (check for buffered/spontaneous data)")
+    print(" Method: device.read() without sending anything first")
     print("=" * 70)
     print()
 
-    for cmd, description in NK_QUERY_COMMANDS.items():
-        print(f"  [{cmd:#04x}] {description}")
-        pkt = build_nk_packet(cmd)
-        if verbose:
-            print(f"  TX ({len(pkt)} bytes, feature report):")
-            print(hex_dump(pkt, prefix="      "))
-
-        try:
-            resp = send_and_read(device, pkt, report_id=NK_REPORT_ID,
-                                 timeout_ms=timeout_ms, verbose=verbose)
-        except RuntimeError as e:
-            print(f"  ERROR: {e}")
-            results[cmd] = {"status": "error", "error": str(e)}
-            print()
-            continue
-
-        if resp is None:
-            print(f"  RX: (no response - feature report returned no data)")
-            results[cmd] = {"status": "timeout"}
-        elif is_meaningful_response(resp):
-            print(f"  RX ({len(resp)} bytes) *** HAS DATA ***:")
+    # Try multiple reads in case there are multiple buffered reports
+    for i in range(5):
+        print(f"  Read attempt {i+1}/5 (timeout={timeout_ms}ms)...")
+        resp = transport_read_only(device, timeout_ms=min(timeout_ms, 500),
+                                   verbose=verbose)
+        if resp and is_meaningful_response(resp):
+            print(f"  *** GOT DATA *** ({len(resp)} bytes):")
             print(hex_dump(resp, prefix="      "))
-            results[cmd] = {"status": "data", "response": resp}
+            results.append({"attempt": i+1, "data": resp})
         else:
-            print(f"  RX ({len(resp)} bytes): all zeros (acknowledged but empty)")
-            results[cmd] = {"status": "zeros", "response": resp}
+            print(f"  (no data)")
+            # If first read is empty, subsequent ones likely are too
+            if i == 0:
+                # Do one more with longer timeout
+                resp2 = transport_read_only(device, timeout_ms=timeout_ms,
+                                            verbose=verbose)
+                if resp2 and is_meaningful_response(resp2):
+                    print(f"  *** GOT DATA on retry *** ({len(resp2)} bytes):")
+                    print(hex_dump(resp2, prefix="      "))
+                    results.append({"attempt": i+1, "data": resp2})
+                break
+        time.sleep(0.01)
 
-        print()
-        time.sleep(0.05)  # Small delay between probes
-
+    if not results:
+        print("  Result: No buffered data found.")
+    print()
     return results
 
 
-def probe_mouse(device, timeout_ms: int, verbose: bool) -> dict:
-    """Probe the MOUSE (0xF8) protocol path. Returns results dict."""
+def probe_hybrid(device, timeout_ms: int, verbose: bool) -> dict:
+    """
+    VARIANT 2 (MOST LIKELY): HYBRID transport.
+    Send via send_feature_report(), receive via device.read().
+
+    This is the expected pattern for bootloaders that:
+      - Accept commands on the control endpoint (feature reports)
+      - Send responses on the interrupt IN endpoint (input reports)
+    """
     results = {}
     print("=" * 70)
-    print(" MOUSE Protocol Probe (Report ID 0xF8)")
-    print(" Magic: 55 AA 55 + cmd")
-    print(" Transport: FEATURE reports (HidD_SetFeature / HidD_GetFeature)")
+    print(" VARIANT 2: HYBRID (send_feature_report + device.read)")
+    print(" This is the MOST LIKELY correct transport pattern.")
+    print(" send_feature_report() already confirmed working (returned 65).")
+    print(" Hypothesis: response comes back on interrupt IN pipe.")
     print("=" * 70)
     print()
 
+    # --- NORDICKEYBOARD protocol ---
+    print("  --- NORDICKEYBOARD (Report ID 0x7F) ---")
+    print()
+    for cmd, description in NK_QUERY_COMMANDS.items():
+        label = f"NK_0x{cmd:02x}"
+        print(f"  [{cmd:#04x}] {description}")
+        pkt = build_nk_packet(cmd)
+        if verbose:
+            print(f"  TX ({len(pkt)} bytes):")
+            print(hex_dump(pkt, prefix="      "))
+
+        resp = transport_hybrid_feature_send_interrupt_read(
+            device, pkt, timeout_ms=timeout_ms, verbose=verbose)
+
+        if resp and is_meaningful_response(resp):
+            print(f"  *** RESPONSE *** ({len(resp)} bytes):")
+            print(hex_dump(resp, prefix="      "))
+            results[label] = {"status": "data", "response": resp, "cmd": cmd,
+                              "protocol": "NK", "transport": "hybrid"}
+        else:
+            print(f"  (no response on interrupt read)")
+            results[label] = {"status": "timeout", "cmd": cmd, "protocol": "NK"}
+        print()
+        time.sleep(0.05)
+
+    # --- MOUSE protocol ---
+    print("  --- MOUSE (Report ID 0xF8) ---")
+    print()
     for cmd, description in MOUSE_QUERY_COMMANDS.items():
+        label = f"MOUSE_0x{cmd:02x}"
         print(f"  [{cmd:#04x}] {description}")
         pkt = build_mouse_packet(cmd)
         if verbose:
-            print(f"  TX ({len(pkt)} bytes, feature report):")
+            print(f"  TX ({len(pkt)} bytes):")
             print(hex_dump(pkt, prefix="      "))
 
-        try:
-            resp = send_and_read(device, pkt, report_id=MOUSE_REPORT_ID,
-                                 timeout_ms=timeout_ms, verbose=verbose)
-        except RuntimeError as e:
-            print(f"  ERROR: {e}")
-            results[cmd] = {"status": "error", "error": str(e)}
-            print()
-            continue
+        resp = transport_hybrid_feature_send_interrupt_read(
+            device, pkt, timeout_ms=timeout_ms, verbose=verbose)
 
-        if resp is None:
-            print(f"  RX: (no response - feature report returned no data)")
-            results[cmd] = {"status": "timeout"}
-        elif is_meaningful_response(resp):
-            print(f"  RX ({len(resp)} bytes) *** HAS DATA ***:")
+        if resp and is_meaningful_response(resp):
+            print(f"  *** RESPONSE *** ({len(resp)} bytes):")
             print(hex_dump(resp, prefix="      "))
-            results[cmd] = {"status": "data", "response": resp}
+            results[label] = {"status": "data", "response": resp, "cmd": cmd,
+                              "protocol": "MOUSE", "transport": "hybrid"}
         else:
-            print(f"  RX ({len(resp)} bytes): all zeros (acknowledged but empty)")
-            results[cmd] = {"status": "zeros", "response": resp}
-
+            print(f"  (no response on interrupt read)")
+            results[label] = {"status": "timeout", "cmd": cmd, "protocol": "MOUSE"}
         print()
         time.sleep(0.05)
 
     return results
 
 
-def probe_nk_extended(device, timeout_ms: int, verbose: bool) -> dict:
-    """Try additional NORDICKEYBOARD command bytes for discovery."""
+def probe_alternate_report_ids(device, timeout_ms: int, verbose: bool) -> dict:
+    """
+    VARIANT 3: Try report IDs 0x00, 0x01, 0x02, 0x03.
+    Some devices use report ID 0 (no report ID in descriptor) or common defaults.
+    Test with both hybrid and feature-only transport.
+    """
     results = {}
-    extra_cmds = {
-        0x00: "NOP / Reset?",
-        0x06: "Unknown 0x06",
-        0x07: "Unknown 0x07",
-        0x08: "Unknown 0x08",
-        0x0A: "Unknown 0x0A",
-        0x10: "Unknown 0x10",
-        0x20: "Unknown 0x20",
-        0x40: "Unknown 0x40",
-        0x7F: "Unknown 0x7F",
-        0xFE: "Unknown 0xFE",
-        0xFF: "Unknown 0xFF",
-    }
-
     print("=" * 70)
-    print(" NORDICKEYBOARD Extended Discovery (additional command bytes)")
-    print(" Transport: FEATURE reports (HidD_SetFeature / HidD_GetFeature)")
+    print(" VARIANT 3: ALTERNATE REPORT IDs (0x00, 0x01, 0x02, 0x03)")
+    print(" Some bootloaders use report ID 0 or standard low IDs.")
+    print(" Testing both HYBRID and FEATURE-ONLY transport for each.")
     print("=" * 70)
     print()
 
-    for cmd, description in extra_cmds.items():
-        # Skip if already tested or dangerous
-        if cmd in NK_QUERY_COMMANDS or cmd in DANGEROUS_COMMANDS:
-            continue
+    alt_report_ids = [0x00, 0x01, 0x02, 0x03]
+    cmd = 0x82  # Primary query command
 
-        print(f"  [{cmd:#04x}] {description}")
-        pkt = build_nk_packet(cmd)
-
-        try:
-            resp = send_and_read(device, pkt, report_id=NK_REPORT_ID,
-                                 timeout_ms=timeout_ms, verbose=verbose)
-        except RuntimeError as e:
-            print(f"  ERROR: {e}")
-            results[cmd] = {"status": "error", "error": str(e)}
-            print()
-            continue
-
-        if resp is None:
-            print(f"  RX: (no response)")
-            results[cmd] = {"status": "timeout"}
-        elif is_meaningful_response(resp):
-            print(f"  RX ({len(resp)} bytes) *** HAS DATA ***:")
-            print(hex_dump(resp, prefix="      "))
-            results[cmd] = {"status": "data", "response": resp}
-        else:
-            print(f"  RX: all zeros")
-            results[cmd] = {"status": "zeros", "response": resp}
-
+    for rid in alt_report_ids:
+        print(f"  --- Report ID 0x{rid:02X} ---")
         print()
+
+        # Test with NK magic
+        label = f"RID{rid:#04x}_NK"
+        print(f"    [NK magic + cmd 0x82] via report ID 0x{rid:02x}")
+        pkt = build_nk_packet(cmd, report_id=rid)
+        if verbose:
+            print(f"    TX: {' '.join(f'{b:02x}' for b in pkt[:16])}...")
+
+        # Hybrid first
+        resp = transport_hybrid_feature_send_interrupt_read(
+            device, pkt, timeout_ms=timeout_ms, verbose=verbose)
+        if resp and is_meaningful_response(resp):
+            print(f"    *** HYBRID RESPONSE *** ({len(resp)} bytes):")
+            print(hex_dump(resp, prefix="        "))
+            results[label + "_hybrid"] = {"status": "data", "response": resp}
+        else:
+            print(f"    (hybrid: no response)")
+            results[label + "_hybrid"] = {"status": "timeout"}
+
+        # Feature only
+        resp2 = transport_feature_only(
+            device, pkt, report_id=rid, timeout_ms=timeout_ms, verbose=verbose)
+        if resp2 and is_meaningful_response_skip_first(resp2):
+            print(f"    *** FEATURE RESPONSE *** ({len(resp2)} bytes):")
+            print(hex_dump(resp2, prefix="        "))
+            results[label + "_feature"] = {"status": "data", "response": resp2}
+        else:
+            print(f"    (feature: no response)")
+            results[label + "_feature"] = {"status": "timeout"}
+        print()
+
+        # Test with MOUSE magic
+        label = f"RID{rid:#04x}_MOUSE"
+        print(f"    [MOUSE magic + cmd 0x82] via report ID 0x{rid:02x}")
+        pkt = build_mouse_packet(cmd, report_id=rid)
+
+        # Hybrid
+        resp = transport_hybrid_feature_send_interrupt_read(
+            device, pkt, timeout_ms=timeout_ms, verbose=verbose)
+        if resp and is_meaningful_response(resp):
+            print(f"    *** HYBRID RESPONSE *** ({len(resp)} bytes):")
+            print(hex_dump(resp, prefix="        "))
+            results[label + "_hybrid"] = {"status": "data", "response": resp}
+        else:
+            print(f"    (hybrid: no response)")
+            results[label + "_hybrid"] = {"status": "timeout"}
+
+        # Feature only
+        resp2 = transport_feature_only(
+            device, pkt, report_id=rid, timeout_ms=timeout_ms, verbose=verbose)
+        if resp2 and is_meaningful_response_skip_first(resp2):
+            print(f"    *** FEATURE RESPONSE *** ({len(resp2)} bytes):")
+            print(hex_dump(resp2, prefix="        "))
+            results[label + "_feature"] = {"status": "data", "response": resp2}
+        else:
+            print(f"    (feature: no response)")
+            results[label + "_feature"] = {"status": "timeout"}
+        print()
+
+        # Test with NO magic (raw zeros after report ID)
+        label = f"RID{rid:#04x}_RAW"
+        print(f"    [RAW: just report ID + zeros] via report ID 0x{rid:02x}")
+        pkt = build_raw_packet(rid)
+
+        resp = transport_hybrid_feature_send_interrupt_read(
+            device, pkt, timeout_ms=timeout_ms, verbose=verbose)
+        if resp and is_meaningful_response(resp):
+            print(f"    *** HYBRID RESPONSE *** ({len(resp)} bytes):")
+            print(hex_dump(resp, prefix="        "))
+            results[label + "_hybrid"] = {"status": "data", "response": resp}
+        else:
+            print(f"    (hybrid: no response)")
+            results[label + "_hybrid"] = {"status": "timeout"}
+
+        resp2 = transport_feature_only(
+            device, pkt, report_id=rid, timeout_ms=timeout_ms, verbose=verbose)
+        if resp2 and is_meaningful_response_skip_first(resp2):
+            print(f"    *** FEATURE RESPONSE *** ({len(resp2)} bytes):")
+            print(hex_dump(resp2, prefix="        "))
+            results[label + "_feature"] = {"status": "data", "response": resp2}
+        else:
+            print(f"    (feature: no response)")
+            results[label + "_feature"] = {"status": "timeout"}
+        print()
+
         time.sleep(0.05)
+
+    return results
+
+
+def probe_raw_minimal(device, timeout_ms: int, verbose: bool) -> dict:
+    """
+    VARIANT 4: Send minimal/raw packets without protocol magic.
+    Just report_id + zeros, or report_id + single command byte.
+    The goal is to see if ANY read comes back regardless of content.
+    """
+    results = {}
+    print("=" * 70)
+    print(" VARIANT 4: RAW MINIMAL (no magic, just see if device talks back)")
+    print(" Send simple packets and check if any response appears.")
+    print("=" * 70)
+    print()
+
+    test_cases = [
+        # (description, report_id, payload)
+        ("0x7F + all zeros", 0x7F, []),
+        ("0x7F + single 0x01", 0x7F, [0x01]),
+        ("0x7F + single 0x82", 0x7F, [0x82]),
+        ("0xF8 + all zeros", 0xF8, []),
+        ("0xF8 + single 0x01", 0xF8, [0x01]),
+        ("0xF8 + single 0x82", 0xF8, [0x82]),
+        ("0x00 + all zeros", 0x00, []),
+        ("0x01 + all zeros", 0x01, []),
+        ("0x02 + all zeros", 0x02, []),
+        ("0x7F + 0xFF fill", 0x7F, [0xFF] * 64),
+    ]
+
+    for desc, rid, payload in test_cases:
+        label = f"RAW_{desc}"
+        print(f"  [{desc}]")
+        pkt = build_raw_packet(rid, payload)
+
+        # Try hybrid (most likely)
+        resp = transport_hybrid_feature_send_interrupt_read(
+            device, pkt, timeout_ms=min(timeout_ms, 500), verbose=verbose)
+        if resp and is_meaningful_response(resp):
+            print(f"    *** HYBRID RESPONSE *** ({len(resp)} bytes):")
+            print(hex_dump(resp, prefix="        "))
+            results[label] = {"status": "data", "response": resp, "transport": "hybrid"}
+        else:
+            # Try output/input as last resort
+            resp2 = transport_output_input(
+                device, pkt, timeout_ms=min(timeout_ms, 300), verbose=verbose)
+            if resp2 and is_meaningful_response(resp2):
+                print(f"    *** OUTPUT/INPUT RESPONSE *** ({len(resp2)} bytes):")
+                print(hex_dump(resp2, prefix="        "))
+                results[label] = {"status": "data", "response": resp2,
+                                  "transport": "output_input"}
+            else:
+                print(f"    (no response)")
+                results[label] = {"status": "timeout"}
+        print()
+        time.sleep(0.03)
+
+    return results
+
+
+def probe_output_input_retry(device, timeout_ms: int, verbose: bool) -> dict:
+    """
+    VARIANT 5: Retry OUTPUT/INPUT with the main protocol packets.
+    Previously failed but worth retrying since the device state may have changed
+    after receiving our feature report sends.
+    """
+    results = {}
+    print("=" * 70)
+    print(" VARIANT 5: OUTPUT/INPUT RETRY (hid_write + device.read)")
+    print(" Previously timed out, but device state may have changed.")
+    print("=" * 70)
+    print()
+
+    # Try NK primary query
+    print("  [NK 0x82 via hid_write]")
+    pkt = build_nk_packet(0x82)
+    resp = transport_output_input(device, pkt, timeout_ms=timeout_ms, verbose=verbose)
+    if resp and is_meaningful_response(resp):
+        print(f"  *** RESPONSE *** ({len(resp)} bytes):")
+        print(hex_dump(resp, prefix="      "))
+        results["NK_0x82_output"] = {"status": "data", "response": resp}
+    else:
+        print(f"  (no response)")
+        results["NK_0x82_output"] = {"status": "timeout"}
+    print()
+
+    # Try MOUSE primary query
+    print("  [MOUSE 0x82 via hid_write]")
+    pkt = build_mouse_packet(0x82)
+    resp = transport_output_input(device, pkt, timeout_ms=timeout_ms, verbose=verbose)
+    if resp and is_meaningful_response(resp):
+        print(f"  *** RESPONSE *** ({len(resp)} bytes):")
+        print(hex_dump(resp, prefix="      "))
+        results["MOUSE_0x82_output"] = {"status": "data", "response": resp}
+    else:
+        print(f"  (no response)")
+        results["MOUSE_0x82_output"] = {"status": "timeout"}
+    print()
+
+    # Try with 64-byte packet (no report ID prefix) in case device expects raw
+    print("  [NK 0x82 as 64-byte raw (no report ID byte)]")
+    raw_pkt = bytearray(64)
+    raw_pkt[0:4] = NK_MAGIC
+    raw_pkt[4:6] = NK_PADDING
+    raw_pkt[6] = 0x82
+    try:
+        device.write(bytes(raw_pkt))
+        time.sleep(0.02)
+        resp = device.read(REPORT_SIZE + 1, timeout_ms=timeout_ms)
+        if resp and is_meaningful_response(bytes(resp)):
+            print(f"  *** RESPONSE *** ({len(resp)} bytes):")
+            print(hex_dump(bytes(resp), prefix="      "))
+            results["NK_0x82_raw64"] = {"status": "data", "response": bytes(resp)}
+        else:
+            print(f"  (no response)")
+            results["NK_0x82_raw64"] = {"status": "timeout"}
+    except Exception as e:
+        print(f"  (error: {e})")
+        results["NK_0x82_raw64"] = {"status": "error", "error": str(e)}
+    print()
+
+    return results
+
+
+def probe_feature_report_ids(device, timeout_ms: int, verbose: bool) -> dict:
+    """
+    VARIANT 6: Try get_feature_report with various report IDs.
+    Even without sending first, some devices have feature reports with static data.
+    Also try after sending via the confirmed-working send_feature_report.
+    """
+    results = {}
+    print("=" * 70)
+    print(" VARIANT 6: FEATURE REPORT ID SCAN")
+    print(" Try get_feature_report() with IDs 0x00-0x03, 0x7F, 0xF8")
+    print(" Both cold (no prior send) and warm (after send_feature_report)")
+    print("=" * 70)
+    print()
+
+    scan_ids = [0x00, 0x01, 0x02, 0x03, 0x7F, 0xF8]
+
+    # Cold read (no prior send)
+    print("  --- Cold reads (get_feature_report without prior send) ---")
+    print()
+    for rid in scan_ids:
+        label = f"COLD_feature_0x{rid:02x}"
+        try:
+            resp = device.get_feature_report(rid, REPORT_SIZE + 1)
+            if resp and is_meaningful_response_skip_first(bytes(resp)):
+                print(f"  Report ID 0x{rid:02x}: *** HAS DATA *** ({len(resp)} bytes)")
+                print(hex_dump(bytes(resp), prefix="      "))
+                results[label] = {"status": "data", "response": bytes(resp)}
+            else:
+                print(f"  Report ID 0x{rid:02x}: (zeros or empty)")
+                results[label] = {"status": "zeros"}
+        except Exception as e:
+            print(f"  Report ID 0x{rid:02x}: error - {e}")
+            results[label] = {"status": "error", "error": str(e)}
+    print()
+
+    # Warm read (send NK 0x82 first, then try reading various IDs)
+    print("  --- Warm reads (after sending NK 0x82 via feature report) ---")
+    print()
+    pkt = build_nk_packet(0x82)
+    try:
+        device.send_feature_report(pkt)
+        time.sleep(0.05)
+    except Exception as e:
+        print(f"  (send failed: {e})")
+        return results
+
+    for rid in scan_ids:
+        label = f"WARM_feature_0x{rid:02x}"
+        try:
+            resp = device.get_feature_report(rid, REPORT_SIZE + 1)
+            if resp and is_meaningful_response_skip_first(bytes(resp)):
+                print(f"  Report ID 0x{rid:02x}: *** HAS DATA *** ({len(resp)} bytes)")
+                print(hex_dump(bytes(resp), prefix="      "))
+                results[label] = {"status": "data", "response": bytes(resp)}
+            else:
+                print(f"  Report ID 0x{rid:02x}: (zeros or empty)")
+                results[label] = {"status": "zeros"}
+        except Exception as e:
+            print(f"  Report ID 0x{rid:02x}: error - {e}")
+            results[label] = {"status": "error", "error": str(e)}
+    print()
+
+    # Also try interrupt read after the warm send
+    print("  --- Interrupt read after warm send ---")
+    resp = transport_read_only(device, timeout_ms=timeout_ms, verbose=verbose)
+    if resp and is_meaningful_response(resp):
+        print(f"  *** INTERRUPT DATA *** ({len(resp)} bytes):")
+        print(hex_dump(resp, prefix="      "))
+        results["WARM_interrupt"] = {"status": "data", "response": resp}
+    else:
+        print(f"  (no interrupt data)")
+        results["WARM_interrupt"] = {"status": "timeout"}
+    print()
 
     return results
 
@@ -550,71 +809,55 @@ def probe_nk_extended(device, timeout_ms: int, verbose: bool) -> dict:
 # ===========================================================================
 # Summary
 # ===========================================================================
-def print_summary(nk_results: dict, mouse_results: dict, nk_ext_results: dict):
-    """Print a clear summary of findings."""
+def print_summary(all_results: dict):
+    """Print a clear summary of all findings across all transport variants."""
     print()
     print("=" * 70)
-    print(" SUMMARY")
+    print(" FINAL SUMMARY - ALL TRANSPORT VARIANTS")
     print("=" * 70)
     print()
 
-    # NORDICKEYBOARD
-    nk_responsive = [cmd for cmd, r in nk_results.items() if r["status"] in ("data", "zeros")]
-    nk_data = [cmd for cmd, r in nk_results.items() if r["status"] == "data"]
-    nk_timeout = [cmd for cmd, r in nk_results.items() if r["status"] == "timeout"]
+    # Collect all responses that had actual data
+    successes = []
+    for variant_name, variant_results in all_results.items():
+        if isinstance(variant_results, list):
+            # read-first results
+            for item in variant_results:
+                successes.append((variant_name, "read_first", item.get("data")))
+        elif isinstance(variant_results, dict):
+            for key, result in variant_results.items():
+                if isinstance(result, dict) and result.get("status") == "data":
+                    successes.append((variant_name, key, result.get("response")))
 
-    print("  NORDICKEYBOARD (0x7F) protocol:")
-    if nk_responsive:
-        print(f"    ALIVE - {len(nk_responsive)} command(s) got a response")
-        if nk_data:
-            print(f"    Commands with DATA: {', '.join(f'0x{c:02x}' for c in nk_data)}")
-        print(f"    Commands acknowledged (zeros): "
-              f"{', '.join(f'0x{c:02x}' for c in nk_responsive if c not in nk_data)}")
-    elif nk_timeout:
-        print(f"    NO RESPONSE - all {len(nk_timeout)} commands timed out")
-        print("    This protocol path may not be supported by this bootloader.")
-    print()
-
-    # MOUSE
-    mouse_responsive = [cmd for cmd, r in mouse_results.items() if r["status"] in ("data", "zeros")]
-    mouse_data = [cmd for cmd, r in mouse_results.items() if r["status"] == "data"]
-    mouse_timeout = [cmd for cmd, r in mouse_results.items() if r["status"] == "timeout"]
-
-    print("  MOUSE (0xF8) protocol:")
-    if mouse_responsive:
-        print(f"    ALIVE - {len(mouse_responsive)} command(s) got a response")
-        if mouse_data:
-            print(f"    Commands with DATA: {', '.join(f'0x{c:02x}' for c in mouse_data)}")
-    elif mouse_timeout:
-        print(f"    NO RESPONSE - all {len(mouse_timeout)} commands timed out")
-    print()
-
-    # Extended
-    nk_ext_data = [cmd for cmd, r in nk_ext_results.items() if r["status"] == "data"]
-    if nk_ext_data:
-        print(f"  EXTENDED NK discoveries: {', '.join(f'0x{c:02x}' for c in nk_ext_data)}")
+    if successes:
+        print(f"  *** {len(successes)} SUCCESSFUL RESPONSE(S) FOUND ***")
         print()
-
-    # Recommendation
-    print("  NEXT STEPS:")
-    if nk_data:
-        print("    >> NORDICKEYBOARD protocol is ACTIVE and returning data!")
-        print("    >> This is the most promising path for unsigned firmware flash.")
-        print("    >> Phase 2: attempt to send firmware data via 0x7F channel.")
-    elif nk_responsive:
-        print("    >> NORDICKEYBOARD protocol is responding (acknowledged commands).")
-        print("    >> May need correct sequencing (init before query).")
-        print("    >> Try: send 0x01 (init) first, then 0x82 (get info).")
-    elif mouse_data:
-        print("    >> Only MOUSE protocol responded. RSA bypass via NK not available.")
-        print("    >> May need to find another approach (key extraction, glitching).")
+        for variant, key, data in successes:
+            print(f"  VARIANT: {variant}")
+            print(f"  KEY:     {key}")
+            if data:
+                print(f"  DATA ({len(data)} bytes):")
+                print(hex_dump(data, prefix="      "))
+            print()
+        print("  CONCLUSION: The device IS responding! Use the transport variant")
+        print("  that produced data for Phase 2 firmware operations.")
     else:
-        print("    >> Neither protocol responded. Possible issues:")
-        print("       - Device not actually in boot mode")
-        print("       - Wrong HID interface selected")
-        print("       - Feature report size mismatch (expected 65 bytes)")
-        print("       - hidapi build does not support feature reports on this OS")
-        print("       - Device requires a specific init sequence before responding")
+        print("  NO RESPONSES received from ANY transport variant.")
+        print()
+        print("  Possible explanations:")
+        print("    1. Device requires a specific INIT SEQUENCE before it responds")
+        print("       (e.g., a timing-sensitive handshake or specific byte pattern)")
+        print("    2. Device is in a deeper sleep/error state than expected")
+        print("    3. The HID descriptor defines different report sizes")
+        print("    4. Response uses a completely different mechanism (raw USB bulk?)")
+        print("    5. Device firmware is corrupted and bootloader is non-functional")
+        print()
+        print("  NEXT STEPS:")
+        print("    - Try running with --timeout 5000 (longer wait)")
+        print("    - USB packet capture (Wireshark + USBPcap) to see what the")
+        print("      device actually sends on the wire after our commands")
+        print("    - Try the ry_upgrade.exe tool under Wireshark to capture the")
+        print("      exact transport it uses successfully")
     print()
 
 
@@ -624,8 +867,8 @@ def print_summary(nk_results: dict, mouse_results: dict, nk_ext_results: dict):
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Phase 1: Read-Only Bootloader Probe for Ajazz AJ159 APEX\n"
-            "Probes both NORDICKEYBOARD (0x7F) and MOUSE (0xF8) boot protocols.\n"
+            "Phase 1: Multi-Transport Bootloader Probe for Ajazz AJ159 APEX\n"
+            "Tests ALL possible HID communication patterns to find device responses.\n"
             "SAFE: Only sends query commands, never erase/write/flash."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -633,16 +876,15 @@ def main():
     parser.add_argument("--timeout", type=int, default=1000,
                         help="Read timeout in milliseconds (default: 1000)")
     parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Show TX packets in hex dump")
-    parser.add_argument("--skip-extended", action="store_true",
-                        help="Skip extended command discovery")
+                        help="Show detailed TX/RX info")
     parser.add_argument("--vid", type=lambda x: int(x, 0), default=BOOT_VID,
                         help=f"Override VID (default: {BOOT_VID:#06x})")
     parser.add_argument("--pid", type=lambda x: int(x, 0), default=BOOT_PID,
                         help=f"Override PID (default: {BOOT_PID:#06x})")
+    parser.add_argument("--skip-slow", action="store_true",
+                        help="Skip slower probe variants (feature scan, output/input retry)")
     args = parser.parse_args()
 
-    # Apply user-specified VID/PID
     vid = args.vid
     pid = args.pid
 
@@ -654,15 +896,26 @@ def main():
 /_/   \_\_/ |_|____/|_| /_/   \_\_| |____/_/\_\
           |__/
     """)
-    print("  Phase 1: Read-Only Bootloader Protocol Probe")
+    print("  Phase 1: MULTI-TRANSPORT Bootloader Protocol Probe")
     print("  Target: Ajazz AJ159 APEX (boot mode)")
     print(f"  VID:PID = {vid:#06x}:{pid:#06x}")
     print(f"  Expected usage_page={BOOT_USAGE_PAGE:#06x} usage={BOOT_USAGE:#06x}")
-    print(f"  Transport: HID Feature Reports (SetFeature/GetFeature)")
-    print(f"  Report size: 64 data bytes + 1 report ID = 65 total")
+    print(f"  Timeout: {args.timeout}ms per read attempt")
+    print()
+    print("  KEY DISCOVERY: send_feature_report() SUCCEEDS (returns 65)")
+    print("  The device IS receiving our commands. We need to find WHERE")
+    print("  it sends the response (interrupt pipe? different report ID?)")
     print()
     print("  SAFETY: This script only sends QUERY commands.")
     print("          No erase, write, or flash operations will be performed.")
+    print()
+    print("  TRANSPORT VARIANTS TO TEST:")
+    print("    1. READ-FIRST (check for buffered data)")
+    print("    2. HYBRID: send_feature_report + device.read [MOST LIKELY]")
+    print("    3. ALTERNATE REPORT IDs (0x00, 0x01, 0x02, 0x03)")
+    print("    4. RAW MINIMAL (no magic, just poke and listen)")
+    print("    5. OUTPUT/INPUT RETRY (hid_write + device.read)")
+    print("    6. FEATURE REPORT ID SCAN (get_feature_report with various IDs)")
     print()
     print("-" * 70)
 
@@ -678,27 +931,49 @@ def main():
     print(f"    Product: {dev_info.get('product_string', 'N/A')!r}")
     print()
 
-    # Set non-blocking for reads (we use timeout instead)
+    # Use blocking mode with timeouts for reads
     device.set_nonblocking(False)
 
-    try:
-        # Phase 1: NORDICKEYBOARD probe
-        nk_results = probe_nordickeyboard(device, args.timeout, args.verbose)
+    all_results = {}
 
-        # Small delay between protocol switches
+    try:
+        # === VARIANT 1: Read first (buffered data check) ===
+        read_first_results = probe_read_first(device, args.timeout, args.verbose)
+        all_results["READ_FIRST"] = read_first_results
+
         time.sleep(0.1)
 
-        # Phase 2: MOUSE probe
-        mouse_results = probe_mouse(device, args.timeout, args.verbose)
+        # === VARIANT 2: HYBRID (most likely correct) ===
+        hybrid_results = probe_hybrid(device, args.timeout, args.verbose)
+        all_results["HYBRID"] = hybrid_results
 
-        # Phase 3: Extended discovery (optional)
-        nk_ext_results = {}
-        if not args.skip_extended:
+        time.sleep(0.1)
+
+        # === VARIANT 3: Alternate report IDs ===
+        alt_id_results = probe_alternate_report_ids(device, args.timeout, args.verbose)
+        all_results["ALT_REPORT_IDS"] = alt_id_results
+
+        time.sleep(0.1)
+
+        # === VARIANT 4: Raw minimal ===
+        raw_results = probe_raw_minimal(device, args.timeout, args.verbose)
+        all_results["RAW_MINIMAL"] = raw_results
+
+        if not args.skip_slow:
             time.sleep(0.1)
-            nk_ext_results = probe_nk_extended(device, args.timeout, args.verbose)
 
-        # Summary
-        print_summary(nk_results, mouse_results, nk_ext_results)
+            # === VARIANT 5: Output/Input retry ===
+            oi_results = probe_output_input_retry(device, args.timeout, args.verbose)
+            all_results["OUTPUT_INPUT"] = oi_results
+
+            time.sleep(0.1)
+
+            # === VARIANT 6: Feature report ID scan ===
+            feat_results = probe_feature_report_ids(device, args.timeout, args.verbose)
+            all_results["FEATURE_SCAN"] = feat_results
+
+        # === Final Summary ===
+        print_summary(all_results)
 
     except KeyboardInterrupt:
         print("\n\n[!] Interrupted by user (Ctrl+C)")
