@@ -1,0 +1,30 @@
+# Linux udev rules for Ajazz AJ159 / Attack Shark / Compx-platform mice + receivers.
+# Lets non-root users access the HID/USB device.
+#
+# Install:
+#   sudo cp 99-aj159.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+# Then replug the mouse/receiver. (Add yourself to the 'plugdev' group if needed.)
+#
+# These cover the common operating + bootloader VIDs for this platform.
+# Use `python3 aj159_debug.py list` to confirm YOUR device's VID:PID and add it.
+
+# --- normal operating mode ---
+SUBSYSTEM=="usb",   ATTR{idVendor}=="1d57", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb",   ATTR{idVendor}=="3151", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb",   ATTR{idVendor}=="006f", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb",   ATTR{idVendor}=="25a7", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb",   ATTR{idVendor}=="25aa", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb",   ATTR{idVendor}=="342d", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+
+# hidraw nodes (so hidapi can open without root)
+KERNEL=="hidraw*",  ATTRS{idVendor}=="1d57", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+KERNEL=="hidraw*",  ATTRS{idVendor}=="3151", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+KERNEL=="hidraw*",  ATTRS{idVendor}=="006f", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+KERNEL=="hidraw*",  ATTRS{idVendor}=="25a7", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+KERNEL=="hidraw*",  ATTRS{idVendor}=="25aa", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+KERNEL=="hidraw*",  ATTRS{idVendor}=="342d", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+
+# --- bootloader / DFU mode (after entering "Boot Upgrade") ---
+SUBSYSTEM=="usb",   ATTR{idVendor}=="0c45", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb",   ATTR{idVendor}=="0461", MODE="0660", GROUP="plugdev", TAG+="uaccess"
