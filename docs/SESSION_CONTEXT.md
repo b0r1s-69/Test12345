@@ -83,9 +83,6 @@ Alternative: Reverse engineer the raw Nordic OTA protocol (55 AA prefix) and wri
 
 ## Files and Directories
 
-### /workaround/
-Immediate host-side fix using AutoHotkey. Zero risk, works today.
-
 ### /firmware_patch/
 The actual firmware binary patch and tools to apply it. Requires a way to bypass RSA to flash.
 

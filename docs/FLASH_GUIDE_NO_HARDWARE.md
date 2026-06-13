@@ -114,14 +114,11 @@ Boot mode (mouse re-enumerates with boot VID:PID)
 ## Files Reference
 
 ```
-firmware_analysis/
+firmware_patch/
 ├── mouse_app_fw.bin              # Original app firmware (carved)
 ├── mouse_app_fw_PATCHED.bin      # Patched app firmware
-├── aj159_apex_patched_full.bin   # Full MCUboot image (header+app+TLV)
-├── ry_upgrade_PATCHED.exe        # Try 1st: SHA256 updated, RSA kept
-├── ry_upgrade_HASHONLY.exe       # Try 2nd: SHA256+KEYHASH, no RSA
-├── ry_upgrade_NOSIG.exe          # Try 3rd: SHA256 only, no RSA
-├── patch_macro_fix.py            # Python patcher (recreate from source)
 ├── macro_button_fix.ips          # IPS format patch
-└── PATCH_README.md               # Technical details of the fix
+├── ry_upgrade_PATCHED.exe        # SHA256 updated, RSA kept (stale)
+├── patch_macro_fix.py            # Python patcher (recreate from source)
+└── repack_firmware.py            # Re-embed patched FW into upgrade EXE
 ```

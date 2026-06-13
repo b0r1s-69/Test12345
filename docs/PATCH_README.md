@@ -108,7 +108,7 @@ Would require Ajazz/RuiYu's private RSA key — not available.
 
 #### Option D: Host-side workaround (no flash needed)
 
-If you cannot open the mouse, use the host-side solution (AutoHotkey/evdev script) from the debug toolkit. It intercepts the mouse report at the driver level and re-inserts the held button state.
+If you cannot open the mouse, a host-side solution (AutoHotkey/evdev script) can intercept the mouse report at the driver level and re-insert the held button state.
 
 ---
 

@@ -10,18 +10,18 @@ When you assign an onboard macro to LMB and hold RMB (e.g., aiming in a game), p
 
 | Approach | Status |
 |----------|--------|
-| AutoHotkey workaround (host-side) | **READY** - works today, zero risk |
 | Firmware binary patch (27 bytes) | **READY** - patch built, cannot flash due to RSA |
 | Flash via NORDICKEYBOARD loophole | **IN PROGRESS** - method discovered, needs EXE patching |
 | Bug report to Ajazz | **READY** - full technical details for their firmware team |
 
-## Quick Start (Immediate Fix)
+## Continuing This Project
 
-1. Install [AutoHotkey v2](https://www.autohotkey.com/)
-2. Run `workaround/macro_fix.ahk`
-3. Done - held buttons will no longer release when macros fire
+This repository uses a two-file system for AI-assisted session continuity:
 
-See [`workaround/README.md`](workaround/README.md) for startup configuration and details.
+- **[`CONTEXT_PROMPT.md`](CONTEXT_PROMPT.md)** - Paste into any AI conversation to get full project context
+- **[`SESSION_LOG.md`](SESSION_LOG.md)** - Living document tracking current state, findings, and next steps
+
+See `CONTEXT_PROMPT.md` for instructions on how to pick up where the last session left off.
 
 ## The Root Cause
 
@@ -48,9 +48,8 @@ Total: 27 bytes changed out of 108,608. See [`docs/PATCH_README.md`](docs/PATCH_
 ## Repository Structure
 
 ```
-workaround/                    # Immediate host-side fix (USE THIS NOW)
-  macro_fix.ahk                  AutoHotkey script - blocks spurious releases
-  README.md                      Installation and usage instructions
+CONTEXT_PROMPT.md              # AI session prompt - paste to continue project
+SESSION_LOG.md                 # Living session state - updated every session
 
 firmware_patch/                # Binary firmware patch (needs RSA bypass to flash)
   mouse_app_fw.bin               Original application firmware
@@ -80,7 +79,7 @@ docs/                          # Technical documentation
   PATCH_README.md                  Full patch technical details
   FLASH_GUIDE_NO_HARDWARE.md       Flashing instructions
   DEBUG_TOOLKIT.md                 Debug toolkit usage guide
-  SESSION_CONTEXT.md               Full engineering context
+  SESSION_CONTEXT.md               Legacy engineering context
 ```
 
 ## Technical Details
@@ -99,11 +98,10 @@ The mouse bootloader (MCUboot) enforces RSA-2048 signature verification. Our pat
 2. Update only SHA-256 - bootloader rejects (stale RSA)
 3. NORDICKEYBOARD method - bypasses MCUboot but tool says "does not require upgrade"
 
-The workaround script provides an immediate fix while we continue working on the flash bypass.
+The NORDICKEYBOARD loophole bypass is the current focus of research. See [`SESSION_LOG.md`](SESSION_LOG.md) for current status and next steps.
 
 ## Safety
 
-- The AutoHotkey workaround is completely safe (no firmware changes)
 - The firmware patch modifies ONLY the macro-to-report code path
 - MCUboot swap design means failed flash attempts keep the original firmware
 - Your settings, pairing, DPI, and macros are preserved

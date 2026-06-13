@@ -126,7 +126,7 @@ The code cave region at `0x025F36` has been verified as unused (all zeros in the
 - **Severity:** High (for gamers using onboard macros)
 - **Affected users:** Anyone using onboard macros on buttons while simultaneously holding other mouse buttons
 - **Common scenario:** FPS gaming - holding RMB (aim/scope) while firing LMB macro (rapid-fire/recoil control)
-- **Workaround available:** Host-side AutoHotkey script that blocks spurious button releases (included in our repository)
+- **Workaround available:** Host-side scripts can intercept the mouse report at the driver level to block spurious button releases
 
 ## Verification Method
 
@@ -149,5 +149,5 @@ We are happy to provide:
 
 ## Repository
 
-All technical details, tools, and the workaround script are available at:
+All technical details and tools are available at:
 https://github.com/b0r1s-69/Test12345
