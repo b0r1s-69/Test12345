@@ -1,92 +1,119 @@
-# AJ159 APEX — Macro Button Fix (Firmware Patch)
+# AJ159 APEX - Macro Button Fix
 
 Fixes the onboard macro playback bug on the **Ajazz AJ159 APEX** gaming mouse where held buttons (like RMB) are released when a macro fires.
 
-## The Bug
+## The Problem
 
-When a macro fires on LMB, it **overwrites** the entire HID buttons byte instead of OR-merging with physically held buttons. Result: your held RMB drops.
+When you assign an onboard macro to LMB and hold RMB (e.g., aiming in a game), pressing LMB causes RMB to release. This happens because the firmware **overwrites** the HID buttons byte with macro state instead of OR-merging with physical button state.
 
-## The Fix
+## Status
 
-A 27-byte binary patch at address `0x024616` in the application firmware (MV302, v1.0.0). Redirects the macro button-write through a trampoline that properly OR-merges macro buttons with physical button state.
+| Approach | Status |
+|----------|--------|
+| AutoHotkey workaround (host-side) | **READY** - works today, zero risk |
+| Firmware binary patch (27 bytes) | **READY** - patch built, cannot flash due to RSA |
+| Flash via NORDICKEYBOARD loophole | **IN PROGRESS** - method discovered, needs EXE patching |
+| Bug report to Ajazz | **READY** - full technical details for their firmware team |
 
+## Quick Start (Immediate Fix)
+
+1. Install [AutoHotkey v2](https://www.autohotkey.com/)
+2. Run `workaround/macro_fix.ahk`
+3. Done - held buttons will no longer release when macros fire
+
+See [`workaround/README.md`](workaround/README.md) for startup configuration and details.
+
+## The Root Cause
+
+At firmware address `0x024616`, the macro engine uses:
 ```
-Before: report[0] = macro_buttons         (OVERWRITES physical!)
-After:  report[0] = macro_buttons | physical_buttons  (MERGES correctly)
+STRB r1, [r4]      ; report[0] = macro_buttons (OVERWRITES physical state)
 ```
 
-## Quick Start (No Hardware Debugger Needed)
+The correct approach (used by physical button processing):
+```
+LDRB r0, [r4]      ; Read current state
+ORRS r0, r1        ; OR-merge macro buttons with physical
+STRB r0, [r4]      ; Write back (preserves held buttons)
+```
 
-1. Download one of the patched upgrade tools from `firmware_patch/`
-2. Connect mouse via USB cable (wired mode)
-3. Close all mouse driver software
-4. Run the patched `.exe` on Windows
-5. Click upgrade for the mouse
+## The 27-Byte Fix
 
-**Try in order:**
-| File | Strategy |
-|------|----------|
-| `ry_upgrade_PATCHED.exe` | SHA256 updated, RSA kept (try first) |
-| `ry_upgrade_HASHONLY.exe` | SHA256 + KEYHASH, no RSA |
-| `ry_upgrade_NOSIG.exe` | SHA256 only, no RSA |
+A trampoline at the bug site redirects to a code cave that performs proper OR-merge:
+- **Bug site (0x024616):** BL to code cave + branch to continue
+- **Code cave (0x025F36):** LDRB + ORRS + STRB for both button bytes + BX LR
 
-**Safe:** If the bootloader rejects the image, your mouse keeps the original firmware unchanged.
-
-## What's Preserved After Flashing
-
-- 2.4GHz receiver pairing (stored in separate NVS flash region)
-- Bluetooth bonds
-- DPI / RGB / sleep settings
-- Button remapping
-- All radio firmware (untouched)
+Total: 27 bytes changed out of 108,608. See [`docs/PATCH_README.md`](docs/PATCH_README.md) for full disassembly.
 
 ## Repository Structure
 
 ```
-firmware_patch/          # Patched upgrade tools + firmware binaries
-  ry_upgrade_PATCHED.exe    # Try 1st
-  ry_upgrade_HASHONLY.exe   # Try 2nd  
-  ry_upgrade_NOSIG.exe      # Try 3rd
-  mouse_app_fw.bin          # Original firmware (for reference)
-  mouse_app_fw_PATCHED.bin  # Patched firmware binary
-  macro_button_fix.ips      # IPS patch file
-  patch_macro_fix.py        # Python patcher (recreate from source)
-  repack_firmware.py        # Re-embed into EXE
+workaround/                    # Immediate host-side fix (USE THIS NOW)
+  macro_fix.ahk                  AutoHotkey script - blocks spurious releases
+  README.md                      Installation and usage instructions
 
-debug_toolkit/           # USB HID debug tools (run on YOUR PC)
-  aj159_debug.py            # Main debug tool (list/monitor/probe/set-*)
-  requirements.txt          # pip install hidapi
-  99-aj159.rules            # Linux udev rules
+firmware_patch/                # Binary firmware patch (needs RSA bypass to flash)
+  mouse_app_fw.bin               Original application firmware
+  mouse_app_fw_PATCHED.bin       Patched firmware with macro fix
+  macro_button_fix.ips           IPS patch file
+  patch_macro_fix.py             Python patcher script
+  repack_firmware.py             Re-embed patched FW into upgrade EXE
+  ry_upgrade_PATCHED.exe         Patched upgrade tool (blocked by RSA)
 
-docs/                    # Technical documentation
-  FLASH_GUIDE_NO_HARDWARE.md  # Complete flashing instructions
-  PATCH_README.md              # Technical patch details + disassembly
-  DEBUG_TOOLKIT.md             # Debug toolkit usage guide
+debug_toolkit/                 # USB HID debug and flash tools
+  aj159_debug.py                 Main debug tool (monitor/probe/set)
+  flash_aj159.py                 Flash attempt script
+  bruteforce_boot.py             Boot mode brute-force
+  enter_boot.py                  Enter boot mode utility
+  probe_deep.py                  Deep device probing
+  scan_mouse.py                  Mouse scanner
+  requirements.txt               Python dependencies (hidapi)
+  99-aj159.rules                 Linux udev rules
+
+loophole_flash/                # NORDICKEYBOARD bypass research
+  ry_upgrade.exe                 Upgrade tool (with modified config)
+  resources/support_config.json  Config with NORDICKEYBOARD for boot PID
+  README.md                      Research notes and next steps
+
+docs/                          # Technical documentation
+  AJAZZ_BUG_REPORT.md             Professional bug report for Ajazz
+  PATCH_README.md                  Full patch technical details
+  FLASH_GUIDE_NO_HARDWARE.md       Flashing instructions
+  DEBUG_TOOLKIT.md                 Debug toolkit usage guide
+  SESSION_CONTEXT.md               Full engineering context
 ```
 
 ## Technical Details
 
 - **Target:** AJ159 APEX firmware MV302 (version 1.0.0+76824442)
-- **Platform:** Nordic nRF52 + Zephyr RTOS + MCUboot
-- **Sensor:** PixArt PAW3950
+- **SHA256:** `1c0c5fdd02ce92ed521729a00218f0f86920211455b1d51fe9a4455a7a3d8262`
+- **Platform:** Nordic nRF52840 + Zephyr RTOS + MCUboot
 - **Bug location:** `0x024616` (file offset `0x14616`)
 - **Fix:** BL trampoline to code cave at `0x025F36`
-- **Changes:** 27 bytes (9 at bug site + 18 in code cave)
+- **Signature:** MCUboot RSA-2048 (blocks unsigned firmware)
+
+## Why Can't We Just Flash It?
+
+The mouse bootloader (MCUboot) enforces RSA-2048 signature verification. Our patched firmware has a valid SHA-256 hash but we do not have Ajazz's private signing key. Three approaches tried:
+1. Remove RSA from image TLV - bootloader rejects
+2. Update only SHA-256 - bootloader rejects (stale RSA)
+3. NORDICKEYBOARD method - bypasses MCUboot but tool says "does not require upgrade"
+
+The workaround script provides an immediate fix while we continue working on the flash bypass.
 
 ## Safety
 
-- The patch modifies ONLY the macro-to-report code path
-- No radio, pairing, sensor, or settings code is touched
-- MCUboot swap design means failed upgrades keep old firmware
-- The patched EXEs have no Authenticode signature (same as original)
-- Version-locked: patcher verifies SHA256 before applying
+- The AutoHotkey workaround is completely safe (no firmware changes)
+- The firmware patch modifies ONLY the macro-to-report code path
+- MCUboot swap design means failed flash attempts keep the original firmware
+- Your settings, pairing, DPI, and macros are preserved
 
 ## Credits
 
-- Protocol reverse engineering: [attack-shark-x11-driver](https://github.com/HarukaYamamoto0/attack-shark-x11-driver) (MIT)
-- Firmware analysis and patch: Kiro AI-assisted reverse engineering
-- Official firmware source: [a-jazz.com](https://www.a-jazz.com/en/h-col-141.html)
+- Protocol research: [attack-shark-x11-driver](https://github.com/HarukaYamamoto0/attack-shark-x11-driver) (MIT)
+- Firmware analysis and patch development: community reverse engineering
+- Official firmware: [a-jazz.com](https://www.a-jazz.com/en/h-col-141.html)
 
 ## Disclaimer
 
-This is an unofficial community modification. Use at your own risk. Not affiliated with Ajazz, Attack Shark, or RuiYu.
+Unofficial community modification. Use at your own risk. Not affiliated with Ajazz, Attack Shark, or RuiYu.
