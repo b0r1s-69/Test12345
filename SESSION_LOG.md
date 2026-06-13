@@ -6,158 +6,164 @@
 
 ---
 
-## LAST SESSION SUMMARY
-
-Completed full reverse engineering of the macro button bug, built a working 27-byte firmware patch, attempted multiple flash methods, and discovered the NORDICKEYBOARD loophole as the most promising path forward. The AutoHotkey host-side workaround was previously implemented but later removed from the repo (deemed unnecessary by the user). Repository was reorganized with proper documentation.
-
----
-
 ## ACTIVE LEADS
 
-### 1. NORDICKEYBOARD Loophole (HIGH PRIORITY)
+### 1. Runtime HID Buffer Overflow Exploitation (HIGH PRIORITY)
 
-**Status:** Partially working - code path activates but reports "does not require upgrade"
+**Status:** Not started — the only remaining pure-software path
 
-**What we know:**
-- Changing PID 4025's method from `MOUSE` to `NORDICKEYBOARD` in `support_config.json` activates a different UI in `ry_upgrade.exe`
-- The tool shows "DEVICE ID:0 / USBV0 / UPGRADE" (different from normal MOUSE UI)
-- It reports "does not require upgrade" because no firmware blob is mapped to NORDICKEYBOARD for this device
-- The NORDICKEYBOARD method uses 55 AA magic byte headers (raw Nordic OTA)
-- This protocol bypasses MCUboot RSA verification entirely
+**Concept:** The running MV302 firmware processes HID config/macro packets via SET_REPORT on the vendor interface. If a buffer overflow exists in the input parser, we can:
+1. Gain arbitrary code execution on the nRF52 (no ASLR, no DEP on Cortex-M)
+2. From inside the running firmware, disable APPROTECT and/or patch MCUboot's RSA check in internal flash
+3. Then flash normally with our working flasher
 
-**Next steps:**
-- Reverse engineer `ry_upgrade.exe` (Rust + Slint binary) to find where firmware blobs are stored
-- Find the version comparison that triggers "does not require upgrade"
-- Either inject our firmware data or bypass the version check
-- Alternative: write a custom Nordic OTA flasher that speaks the 55 AA protocol directly
+**What's needed:**
+- Full disassembly of the HID SET_REPORT handler (vendor interface, 64-byte feature reports)
+- Identify fixed-size buffers, memcpy without bounds check, or stack smash vectors
+- Build exploit payload (ARM Thumb-2 shellcode)
 
-### 2. Custom Nordic OTA Flasher (MEDIUM PRIORITY)
+### 2. Quick Protocol Tweaks (LOW PRIORITY — longshots)
 
-**Status:** Not started
+**Status:** Not yet tested
 
-**Concept:** Instead of patching the EXE, reverse engineer the raw Nordic OTA protocol and write a standalone Python flasher that sends our patched firmware directly via the 55 AA framing.
+- **BA FF mode byte:** Try byte[7] values other than 0x46 — might unlock a no-validation mode
+- **SHA256-only TLV:** Build image with ONLY SHA256 TLV (no KEYHASH, no RSA) and flash via our tool
+- **Corrupted TLV magic:** Replace 0x6907 with 0x0000 or 0xFFFF — force MCUboot error path
+- **App-only flash:** Send just the app image (1711 chunks, 109456 bytes) without BLE image
 
-**What we need:**
-- Capture USB traffic between ry_upgrade.exe and device during a NORDICKEYBOARD flash (need a device that actually uses this method)
-- Alternatively, disassemble the NORDICKEYBOARD handler in ry_upgrade.exe to understand packet format
-- Implement: enter boot mode -> connect -> send firmware via Nordic OTA -> reboot
+These are all recoverable (mouse boots old firmware or stays in boot mode for reflash).
 
-### 3. SWD/JTAG Direct Flash (LOW PRIORITY - requires hardware access)
+### 3. Contact Ajazz (FALLBACK)
 
-**Status:** Available but requires opening the mouse
+**Status:** Bug report drafted in `docs/AJAZZ_BUG_REPORT.md`
 
-**What we know:**
-- nRF52840 has SWD debug port
-- With a $5 debugger (J-Link, ST-Link, DAPLink), can flash directly to 0x10000
-- Bypasses all signature checks
-- Risk is low with a flash backup
+If all technical paths fail, submit the bug report with full technical details requesting a signed MV303 fix.
 
 ---
 
-## BLOCKED PATHS
+## BLOCKED PATHS (CONFIRMED DEAD)
 
-### MCUboot RSA-2048 Signature Bypass (via modified image)
-
-**Status:** DEAD END (without private key or hardware glitching)
-
-**What we tried:**
-1. Updated SHA256 only, kept stale RSA signature - bootloader rejects
-2. Removed RSA TLV, updated SHA256 + KEYHASH - bootloader rejects
-3. Removed both RSA and KEYHASH TLVs - bootloader rejects
-
-**Conclusion:** The on-device MCUboot strictly enforces RSA-2048 signature verification. Cannot bypass through image manipulation alone.
-
-### Version Bump in support_config.json
-
-**Status:** DEAD END
-
-**What we tried:**
-- Modified the `usbv` field in support_config.json to force a version mismatch
-- Created version-bumped EXEs (v1.0.1)
-
-**Result:** The "does not require upgrade" message persists because the issue is not version comparison - it is that no firmware data exists for the NORDICKEYBOARD method for this device.
+| Path | How Killed | Evidence |
+|------|-----------|----------|
+| NORDICKEYBOARD bypass | Not a separate protocol — "55 AA" is just the enter-boot command | USB capture decode |
+| ry_upgrade_PATCHED.exe | MCUboot rejects (RSA mismatch) | Direct test via official tool |
+| ry_upgrade_HASHONLY.exe | MCUboot rejects (RSA missing) | Direct test via official tool |
+| ry_upgrade_NOSIG.exe | MCUboot rejects (RSA missing) | Direct test via official tool |
+| Custom flasher with patched image | MCUboot rejects — mouse stuck in boot, recovered | Direct flash test Session 5 |
+| BLE DFU/SMP over BLE | UUID not present in firmware | Binary scan of app + BLE images |
+| NVS config toggle | No config strings exist — behavior is hardcoded | Full string dump analysis |
+| loophole_flash version tricks | Only controls whether tool sends; device still validates | Tested multiple variants |
+| MCUboot trailer forgery | Trailer is OUTPUT of validation, not input | MCUboot source analysis |
+| Protected TLV confusion | Circular hash dependency — impossible | MCUboot source analysis |
+| Encryption TLV trick | RSA still checked after decryption | MCUboot source analysis |
+| Flash wear-out of key storage | Protocol only writes external SPI, not internal flash | Architecture analysis |
 
 ---
 
-## OPEN QUESTIONS
+## KEY FINDINGS (Session 5 — Protocol Decode & Direct Test)
 
-1. **Where are firmware blobs stored in ry_upgrade.exe?** Are they in PE resources, appended data, or embedded in the Rust binary's .rodata?
-2. **What is the exact 55 AA packet format?** We know the magic bytes but not the full framing (length encoding, sequence numbers, checksum algorithm, chunk size).
-3. **Does the nRF52840 in this mouse have APPROTECT enabled?** If not, SWD is trivially accessible. If yes, there are known bypasses (CVE-2020-24659 and similar).
-4. **Are there other devices in the RuiYu family that use NORDICKEYBOARD for their primary flash method?** If so, we could capture their traffic to learn the protocol.
-5. **Can we find an older firmware version with weaker security?** Maybe an earlier bootloader did not enforce RSA.
+### Complete Boot Protocol (from USB capture)
+
+**Transport:** HID Feature Reports, Report ID 0x00 (implicit — no report ID in descriptor), 64-byte payloads, SET_REPORT/GET_REPORT on USB control endpoint.
+
+**Normal Mode (PID 0x4026, Interface 2):**
+```
+Get Device ID:  TX [8F 00 00 00 00 00 00 70 00*56]  → RX [8F DB 06 ...] = ID 1755
+Get Version:    TX [80 00 00 00 00 00 00 7F 00*56]  → RX [80 02 03 ...] = v302
+Enter Boot:     TX [7F 55 AA 55 AA 00 00 82 00*56]  → device reboots to PID 0x4025
+```
+
+**Boot Mode (PID 0x4025, Interface 0):**
+```
+Get Boot ID:    TX [BA FF 00 00 00 00 00 46 00*56]  → RX [AB FF DB 06 ...]
+Init Transfer:  TX [BA C0 <chunks_LE16> <size_LE32> 00*56]  → RX [AB C0 <chunks> ...]
+Data Stream:    TX [raw 64-byte chunks] x chunk_count  (no framing)
+Complete:       TX [BA C2 <chunks_LE16> <checksum_LE32> <size_LE32> 00*50] → RX [AB C2 ...]
+```
+
+**Checksum:** Simple sum of ALL data bytes mod 2^32 (NOT CRC32).
+
+**Data blob:** App MCUboot image (109456B) + 0xFF pad to 128KB + BLE MCUboot image (170420B) = 301492 bytes = 4711 chunks.
+
+**Target:** External SPI flash (secondary slot). MCUboot validates after write, copies to primary if RSA passes.
+
+### Why Our Probe Script Failed
+
+The script used Report IDs 0x7F and 0xF8 as HID report IDs. In reality:
+- The HID Report ID is **0x00** (implicit, not in descriptor)
+- `0x7F` and `0xF8` are the **first byte of the 64-byte payload** (command bytes)
+- `device.read()` returned "read error" because the device has NO input report endpoint — it only uses Feature Reports on the control pipe
+
+### RSA Enforcement Confirmed
+
+Direct test: flashed patched image with correct SHA256 but stale RSA → MCUboot rejected → mouse stuck in boot mode → recovered with official tool. This definitively proves RSA-2048 is enforced, not just SHA256.
 
 ---
 
-## DECISIONS MADE
+## REPOSITORY STATE
 
-- **AutoHotkey workaround removed** - user decided it was not needed in the repo
-- **Focus on NORDICKEYBOARD path** - most promising software-only bypass
-- **Firmware patch is FINAL** - the 27-byte fix is correct and complete, only deployment is blocked
-- **Repository is public** - all research is open source for community benefit
-- **Bug report prepared** - ready to send to Ajazz if the community fix route fails
+### Clean file structure:
+```
+firmware_patch/
+  mouse_app_fw.bin              # Original firmware (reference)
+  mouse_app_fw_PATCHED.bin      # Patched firmware (27 bytes changed)
+  macro_button_fix.ips          # IPS patch file
+  patch_macro_fix.py            # Python patcher
+  repack_firmware.py            # Repack into EXE
+  ry_upgrade_PATCHED.exe        # Patched EXE (SHA256 updated, RSA stale)
+  aj159_flasher.py              # Custom Python flasher (WORKING protocol)
 
----
+debug_toolkit/
+  aj159_debug.py                # HID debug/config tool
+  scan_mouse.py                 # Device scanner
+  requirements.txt              # pip install hidapi
+  99-aj159.rules                # Linux udev rules
 
-## KEY FINDINGS
+docs/
+  PATCH_README.md               # Technical patch details
+  FLASH_GUIDE_NO_HARDWARE.md    # Flashing instructions
+  DEBUG_TOOLKIT.md              # Debug toolkit usage
+  AJAZZ_BUG_REPORT.md           # Draft bug report for Ajazz
 
-### Firmware Analysis
-- Bug at 0x024616: STRB overwrites instead of OR-merge
-- Fix at 0x025F36: code cave with LDRB+ORRS+STRB for both bytes
-- 27 bytes total, verified empty code cave region
-- No other significant bugs found in the macro/button processing path
-- No WFI in main loop (good - full polling speed)
-- Single report send trigger at 0x17E00
-
-### ry_upgrade.exe Analysis
-- Rust + Slint GUI application
-- Supports ~130 devices via per-chip modules
-- Methods: MOUSE, NORDICKEYBOARD, FLASH, YZW, YZW24, BK100, and others
-- The NORDICKEYBOARD handler is a completely separate code path from MOUSE
-- Version/firmware mapping is internal to the EXE (not just in support_config.json)
-
-### Protocol Knowledge
-- Normal mode VID: 0x3151, various PIDs
-- Boot mode PID: 0x4025
-- Config interface: USB interface 2, feature reports
-- Upgrade interface: USB interface 1, vendor HID commands
-- Nordic OTA magic: 55 AA prefix on packets
-- MCUboot image: 512-byte header + app + TLV (SHA256 + RSA sig)
-
-### Security Posture
-- MCUboot RSA-2048 strictly enforced (no debug/dev mode bypass found)
-- NORDICKEYBOARD method bypasses MCUboot (writes raw to flash)
-- Unknown whether APPROTECT is enabled (affects SWD accessibility)
-- No known CVEs specific to this MCUboot build version
+CONTEXT_PROMPT.md               # AI session master prompt
+SESSION_LOG.md                  # This file
+README.md                       # Project overview
+```
 
 ---
 
 ## SESSION HISTORY
 
-### Session 1 - Initial Discovery and Patch Development
-- Identified the macro button overwrite bug via firmware disassembly
-- Located bug at 0x024616, developed 27-byte fix using code cave at 0x025F36
-- Created IPS patch file and Python patcher script
-- Attempted standard MCUboot flash with modified SHA256 - rejected by RSA
+### Session 1 — Initial Discovery and Patch Development
+- Identified macro button overwrite bug via disassembly
+- Developed 27-byte BL trampoline fix
+- Created IPS patch and Python patcher
+- Attempted MCUboot flash variants (all rejected)
 
-### Session 2 - Flash Bypass Research
-- Tried multiple MCUboot image modifications (all rejected)
-- Discovered NORDICKEYBOARD method in ry_upgrade.exe support_config.json
-- Modified config to route PID 4025 through NORDICKEYBOARD
-- Confirmed different UI activates but "does not require upgrade"
+### Session 2 — Flash Bypass Research
+- Discovered NORDICKEYBOARD method in support_config.json
+- Modified config — different UI activates but "no upgrade needed"
+- Created version-bumped EXEs (all still rejected by device)
 
-### Session 3 - Version Bypass Attempts and Tooling
-- Created version-bumped EXEs to bypass version check
-- Developed debug toolkit (aj159_debug.py and utilities)
-- Implemented AutoHotkey host-side workaround
-- Wrote professional bug report for Ajazz
+### Session 3 — Version Bypass Attempts and Tooling
+- Built debug toolkit, AutoHotkey workaround (later removed)
+- Wrote Ajazz bug report
 
-### Session 4 - Repository Cleanup
-- Removed AutoHotkey workaround (user decision)
-- Reorganized repository structure
-- Created comprehensive documentation
-- Added CONTEXT_PROMPT.md and SESSION_LOG.md for session continuity
+### Session 4 — Repository Cleanup
+- Removed dead-end files, documented everything
+- Created CONTEXT_PROMPT.md and SESSION_LOG.md
+
+### Session 5 — Protocol Decode & Direct Flash Test (CURRENT)
+- Captured USB traffic with Wireshark/USBPcap during official tool flash
+- Fully decoded the boot protocol (BA/AB commands, Feature Reports, byte-sum checksum)
+- Built working custom flasher (`aj159_flasher.py`)
+- **Successfully communicated with bootloader** — all commands worked perfectly
+- **Flashed patched image** — data accepted, checksum verified
+- **MCUboot REJECTED** — RSA-2048 enforcement confirmed by direct test
+- Mouse recovered with official tool
+- Completed deep exploit analysis — ranked remaining vectors
+- Updated SESSION_LOG with definitive findings
 
 ---
 
-*Next session: Continue NORDICKEYBOARD exploitation or explore custom Nordic OTA flasher*
+*Next session: Quick protocol tweaks (BA FF mode bytes, stripped TLVs) then runtime HID exploitation research*
