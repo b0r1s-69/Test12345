@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create a comprehensive firmware disassembly analysis script that performs deep static analysis of the SET_REPORT handler chain, verifies the patch correctness, documents the overflow analysis findings (no classic overflow found), and identifies all remaining exploitation vectors. This consolidates the Session 7 analysis into reproducible tooling.",
+  "status": "completed",
+  "steps": [
+    "Create debug_toolkit/fw_analyzer.py - a standalone ARM Thumb-2 firmware analysis tool using capstone that: (a) Disassembles and annotates the SET_REPORT handler at 0x1C1A8 (file offset 0xC1A8), (b) Disassembles the main dispatch handler at 0x192C0, (c) Traces all memcpy calls (to 0x14D58) and verifies their length arguments, (d) Verifies the 27-byte patch correctness by disassembling bug site (0x24616) and code cave (0x25F36) in both original and patched binaries, (e) Validates BL encoding targets the correct address, (f) Checks code cave was originally all-zeros, (g) Outputs a structured JSON report of all findings",
+    "The script should accept command-line arguments: --original (path to mouse_app_fw.bin), --patched (path to mouse_app_fw_PATCHED.bin), --output (path for JSON report). Default paths should be relative to script location.",
+    "The JSON report should include: patch_verification (BL target correct, code cave clean, register safety, OR-merge logic), overflow_analysis (list of all memcpy calls with their lengths and whether user-controlled), handler_map (report ID to handler address mapping), and a summary verdict on exploitation feasibility.",
+    "The script must document that: (1) All memcpy calls use hardcoded lengths (5, 6, 8 bytes max), (2) The only computed-length copy at 0x19D86 uses a lookup table capped at 3*16=48 bytes and copies within the input buffer, (3) Input bytes are parsed individually via LDRB from fixed offsets - no bulk copy to stack, (4) The 60-byte stack frame at 0x1C1A8 and 92-byte frame at 0x192C0 are never overflowed.",
+    "Add a requirements entry in debug_toolkit/requirements.txt for capstone if not already present."
+  ],
+  "acceptance_criteria": [
+    "Running `python3 debug_toolkit/fw_analyzer.py --original firmware_patch/mouse_app_fw.bin --patched firmware_patch/mouse_app_fw_PATCHED.bin` produces a JSON report without errors",
+    "The JSON report correctly identifies the BL at 0x24616 targeting 0x25F36",
+    "The JSON report lists all memcpy calls in the handler chain with their lengths",
+    "The script correctly identifies NO classic buffer overflow in the SET_REPORT path",
+    "The patch verification section confirms the OR-merge fix is correctly encoded"
+  ],
+  "verification": [
+    "Run: cd /projects/sandbox/Test12345 && pip install capstone && python3 debug_toolkit/fw_analyzer.py --original firmware_patch/mouse_app_fw.bin --patched firmware_patch/mouse_app_fw_PATCHED.bin",
+    "Verify the script exits with code 0 and produces valid JSON output",
+    "Run: python3 debug_toolkit/aj159_debug.py selftest (confirm existing tools still work)"
+  ],
+  "blocked_reason": null,
+  "findings": "Script verified successfully. BL at 0x24616 correctly targets 0x25F36. All memcpy calls documented with hardcoded lengths. Code cave confirmed all-zeros in original. OR-merge patch logic validated. Existing selftest still passes. Capstone 5.0.9 available in environment. POST-REVIEW: Fixed logic_summary register references (R4 not R0 for physical report pointer), added SHA-256 firmware identity check, replaced bare open().read() with context managers."
+}

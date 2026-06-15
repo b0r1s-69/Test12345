@@ -1,0 +1,27 @@
+{
+  "project_type": "Firmware reverse engineering and binary patching project for Ajazz AJ159 APEX gaming mouse",
+  "language": "Python (tooling), ARM Thumb-2 assembly (firmware binary analysis)",
+  "build_system": "None (scripts are standalone Python). Binary analysis uses capstone disassembler.",
+  "test_framework": "No formal tests. Verification is via script execution and binary analysis output.",
+  "build_command": "python3 firmware_patch/patch_macro_fix.py firmware_patch/mouse_app_fw.bin /tmp/test_patched.bin",
+  "test_command": "python3 debug_toolkit/aj159_debug.py selftest",
+  "verification_instructions": "1. Run selftest on debug toolkit. 2. Run analysis scripts and verify output matches expected disassembly. 3. Verify patch binary correctness via disassembly.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "pip install capstone (for disassembly analysis scripts)",
+  "environment_constraints": "OPEN_INTERNET available. No hardware mouse connected (analysis is offline binary work only). capstone library installed for ARM Thumb disassembly.",
+  "contribution_requirements": "Update SESSION_LOG.md at end of session. Document findings thoroughly. Do not delete previous session entries.",
+  "key_patterns": "Firmware binary at firmware_patch/mouse_app_fw.bin (108608 bytes). Memory mapping: address = file_offset + 0x10000. ARM Thumb-2 ISA. MCUboot image with RSA-2048 signature. Existing tools use hidapi for USB HID communication. Scripts are standalone Python3.",
+  "relevant_files": [
+    "firmware_patch/mouse_app_fw.bin",
+    "firmware_patch/mouse_app_fw_PATCHED.bin",
+    "firmware_patch/patch_macro_fix.py",
+    "firmware_patch/aj159_flasher.py",
+    "debug_toolkit/aj159_debug.py",
+    "debug_toolkit/probe_reports.py",
+    "debug_toolkit/boot_bruteforce.py",
+    "debug_toolkit/tlv_fuzzer.py",
+    "SESSION_LOG.md",
+    "docs/PATCH_README.md"
+  ],
+  "directory_structure": "firmware_patch/ - binary firmware files, patch scripts, flasher. debug_toolkit/ - USB HID analysis tools. docs/ - technical documentation. Root - context/session files."
+}
