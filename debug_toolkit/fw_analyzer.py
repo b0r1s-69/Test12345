@@ -27,6 +27,7 @@ DEPENDENCIES:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import struct
@@ -274,14 +275,14 @@ def analyze_patch(original: bytes, patched: bytes) -> dict:
         "description": "Trampoline OR-merges macro buttons with physical button state",
         "instructions": cave_instructions,
         "logic_summary": [
-            "LDRB R1, [R0, #5]  - Load macro button byte",
-            "LDRB R2, [R0, #0]  - Load physical button state",
+            "LDRB R1, [R0, #5]  - Load macro button byte from HID report",
+            "LDRB R2, [R4]      - Load physical button state (R4 = physical report ptr)",
             "ORRS R1, R2        - OR-merge: preserve held buttons",
-            "STRB R1, [R0, #5]  - Store merged result",
-            "LDRB R1, [R0, #6]  - Load second macro byte",
-            "LDRB R2, [R0, #1]  - Load second physical byte",
+            "STRB R1, [R4]      - Store merged result to physical report",
+            "LDRB R1, [R0, #6]  - Load second macro byte from HID report",
+            "LDRB R2, [R4, #1]  - Load second physical byte (R4 = physical report ptr)",
             "ORRS R1, R2        - OR-merge second byte",
-            "STRB R1, [R0, #1]  - Store merged result",
+            "STRB R1, [R4, #1]  - Store merged result to physical report",
             "BX LR              - Return to caller",
         ],
         "correct": patched_cave == PATCH_APPLIED_CAVE,
@@ -436,14 +437,27 @@ def analyze_handler_map(original: bytes) -> dict:
 def run_analysis(original_path: str, patched_path: str) -> dict:
     """Run the full firmware analysis and return a structured report."""
     # Load binaries
-    original = open(original_path, 'rb').read()
-    patched = open(patched_path, 'rb').read()
+    with open(original_path, 'rb') as f:
+        original = f.read()
+    with open(patched_path, 'rb') as f:
+        patched = f.read()
 
     # Basic validation
     if len(original) != 108608:
         raise ValueError(f"Original binary unexpected size: {len(original)} (expected 108608)")
     if len(patched) != 108608:
         raise ValueError(f"Patched binary unexpected size: {len(patched)} (expected 108608)")
+
+    # Firmware identity check via SHA-256
+    EXPECTED_SHA256 = "1c0c5fdd02ce92ed521729a00218f0f86920211455b1d51fe9a4455a7a3d8262"
+    original_sha256 = hashlib.sha256(original).hexdigest()
+    if original_sha256 != EXPECTED_SHA256:
+        raise ValueError(
+            f"Firmware identity mismatch: SHA-256 {original_sha256} does not match "
+            f"expected {EXPECTED_SHA256}. This tool is calibrated for a specific firmware "
+            f"revision (MV302 AJ159 APEX). Running against a different revision will "
+            f"produce invalid results."
+        )
 
     report = {
         "tool": "fw_analyzer.py",
@@ -452,6 +466,7 @@ def run_analysis(original_path: str, patched_path: str) -> dict:
             "original": os.path.basename(original_path),
             "patched": os.path.basename(patched_path),
             "size": len(original),
+            "sha256_original": original_sha256,
             "architecture": "ARM Thumb-2",
             "base_address": f"0x{BASE_ADDR:05X}",
             "mapping_formula": "memory_address = file_offset + 0x10000",
