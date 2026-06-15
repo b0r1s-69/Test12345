@@ -8,30 +8,13 @@
 
 ## ACTIVE LEADS
 
-### 1. Runtime HID Buffer Overflow Exploitation (HIGH PRIORITY)
-
-**Status:** Not started -- the only remaining pure-software path
-
-**Concept:** The running MV302 firmware processes HID config/macro packets via SET_REPORT on the vendor interface. If a buffer overflow exists in the input parser, we can:
-1. Gain arbitrary code execution on the nRF52 (no ASLR, no DEP on Cortex-M)
-2. From inside the running firmware, disable APPROTECT and/or patch MCUboot's RSA check in internal flash
-3. Then flash normally with our working flasher
-
-**Target function:** Main command processor at 0x1C1A8 (PUSH {R0-R7, LR}; SUB SP, #60 -- allocates 60-byte stack frame)
-
-**What's needed:**
-- Full disassembly of the HID SET_REPORT handler (vendor interface, 64-byte feature reports)
-- Identify fixed-size buffers, memcpy without bounds check, or stack smash vectors
-- Build exploit payload (ARM Thumb-2 shellcode)
-- Note: shellcode needs ~150 bytes Thumb-2 + 4KB RAM buffer, cannot fit in single 64-byte report
-
-### 2. SWD Hardware Access (MEDIUM PRIORITY)
+### 1. SWD Hardware Access (MEDIUM PRIORITY)
 
 **Status:** Not attempted -- requires $5 ST-Link V2 clone
 
 **Concept:** Physical debug port access bypasses all software protections. If APPROTECT is not blown (or can be mass-erased), full read/write access to internal flash.
 
-### 3. Contact Ajazz (FALLBACK)
+### 2. Contact Ajazz (FALLBACK)
 
 **Status:** Bug report drafted in `docs/AJAZZ_BUG_REPORT.md`
 
@@ -59,6 +42,7 @@ If all technical paths fail, submit the bug report with full technical details r
 | BA FF mode byte unlock | All 256 values of byte[7] produce identical response | Hardware test Session 6 |
 | TLV manipulation bypass | All 9 variants (empty, SHA-only, wrong magic, etc.) accepted by bootloader but REJECTED by MCUboot at boot | Hardware test Session 6 (tlv_fuzzer.py) |
 | RSA key recovery | Vendor-specific 2048-bit key (Ajazz/RuiYu), not a Nordic sample key, not crackable | Key extracted from EXE, KEYHASH confirmed |
+| Runtime HID Buffer Overflow Exploitation | Deep static analysis of entire SET_REPORT handler chain -- all memcpy lengths hardcoded (5/6/8 bytes), no user-controlled bulk copy to fixed-size buffer | Session 7 disassembly analysis (fw_analyzer.py) |
 
 ---
 
@@ -291,3 +275,69 @@ README.md                       # Project overview
 ---
 
 *Next session: Deep disassembly of SET_REPORT handler at 0x1C1A8 to identify buffer overflow vectors, or acquire ST-Link V2 for SWD access*
+
+### Session 7 -- Deep Static Analysis of SET_REPORT Handler Chain (Buffer Overflow Definitively Ruled Out)
+
+#### Overview
+Performed comprehensive disassembly analysis of the entire SET_REPORT handler chain using capstone (ARM Thumb-2 disassembler). The goal was to identify any buffer overflow or memory corruption vector that could enable arbitrary code execution via HID SET_REPORT packets.
+
+#### Key Finding: NO Classic Buffer Overflow Exists
+
+**CONFIRMED:** The HID SET_REPORT path contains no exploitable buffer overflow.
+
+Evidence:
+1. **All memcpy calls use hardcoded lengths** -- found calls with lengths 5, 6, and 8 bytes maximum. No memcpy uses a user-controlled length parameter.
+2. **The only computed-length copy** at 0x19D86 is bounded by a lookup table (max value 3*16 = 48 bytes) and copies within the input buffer itself (not to the stack).
+3. **Input bytes are parsed individually** via LDRB (Load Register Byte) from fixed offsets -- there is no bulk copy of user data to any fixed-size stack buffer.
+4. **60-byte stack frame at 0x1C1A8** (main SET_REPORT handler) -- never overflowed. All writes to this frame use hardcoded offsets and sizes.
+5. **92-byte stack frame at 0x192C0** (dispatch handler) -- never overflowed. Same pattern of individual byte reads from fixed offsets.
+
+#### Handler Chain Analysis
+
+The SET_REPORT processing follows this path:
+```
+USB HID SET_REPORT (64-byte feature report on vendor interface)
+  -> Handler at 0x1C1A8 (PUSH {R0-R7, LR}; SUB SP, #60)
+    -> Command dispatch by first byte
+      -> 0x192C0 (main dispatch, 92-byte frame)
+        -> Individual report handlers (0x04, 0x05, 0x06, 0x13-0x18)
+          -> memcpy to 0x14D58 with hardcoded lengths only
+```
+
+All data paths verified: no user-controlled length ever reaches memcpy, no bulk copy of input to stack.
+
+#### Binary Patch Verification (Automated)
+
+Used `debug_toolkit/fw_analyzer.py` to programmatically verify the 27-byte patch:
+
+- **BL at 0x24616** correctly targets the code cave at **0x25F36** (verified via BL encoding decode)
+- **Code cave region** (0x25F36) was confirmed **all-zeros in original binary** -- no existing code overwritten
+- **OR-merge logic** at the code cave correctly:
+  - Reads macro button byte (`LDRB R1, [R0, #5]`)
+  - Reads current physical report (`LDRB R2, [R4]`)
+  - OR-merges them (`ORRS R1, R2`)
+  - Writes merged result (`STRB R1, [R4]`)
+  - Repeats for report[1] (extended buttons byte)
+  - Returns via `BX LR`
+- **Register safety confirmed**: Only R1 and R2 used as scratch within the BL call (caller-saved per ARM AAPCS), R4 preserved as expected
+
+#### Implications
+
+The Runtime HID Buffer Overflow exploitation path is now definitively blocked. The firmware's SET_REPORT handler is conservatively written with no exploitable memory safety issues. This eliminates the last known pure-software approach to bypassing MCUboot RSA verification.
+
+Remaining viable paths are hardware-based (SWD debug access) or social (contacting Ajazz for a signed fix).
+
+#### Tools Created
+- `debug_toolkit/fw_analyzer.py` -- Standalone reproducible analysis tool that performs all of the above verification automatically and outputs structured JSON results
+
+---
+
+## ANALYSIS TOOLS
+
+| Tool | Location | Purpose |
+|------|----------|---------|
+| fw_analyzer.py | `debug_toolkit/fw_analyzer.py` | Deep static analysis of SET_REPORT handler chain and automated binary patch verification. Uses capstone for ARM Thumb-2 disassembly. Outputs structured JSON report documenting all memcpy calls, stack frame sizes, and patch correctness. |
+
+---
+
+*Next session: Acquire ST-Link V2 for SWD hardware access, or submit bug report to Ajazz*

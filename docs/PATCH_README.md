@@ -145,6 +145,25 @@ If you cannot open the mouse, a host-side solution (AutoHotkey/evdev script) can
 
 ## Verification
 
+### Automated Patch Verification (via disassembly)
+
+The patch correctness has been verified programmatically using `debug_toolkit/fw_analyzer.py`:
+
+```bash
+python3 debug_toolkit/fw_analyzer.py \
+  --original firmware_patch/mouse_app_fw.bin \
+  --patched firmware_patch/mouse_app_fw_PATCHED.bin
+```
+
+This tool performs:
+- Decode of the BL instruction at 0x24616 to confirm it targets the code cave at 0x25F36
+- Verification that the code cave region was all-zeros in the original binary (no code overwritten)
+- Disassembly of the code cave to confirm OR-merge logic is correctly encoded
+- Register usage analysis to confirm only caller-saved registers (R1, R2) are modified
+- Full SET_REPORT handler chain analysis confirming no memory safety issues in the firmware
+
+### Hardware Verification (after flashing)
+
 After flashing, test with the debug toolkit:
 ```bash
 python3 aj159_debug.py monitor --vid 0xXXXX --pid 0xYYYY
