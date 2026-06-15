@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Create a comprehensive firmware disassembly analysis script that performs deep static analysis of the SET_REPORT handler chain, verifies the patch correctness, documents the overflow analysis findings (no classic overflow found), and identifies all remaining exploitation vectors. This consolidates the Session 7 analysis into reproducible tooling.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create debug_toolkit/fw_analyzer.py - a standalone ARM Thumb-2 firmware analysis tool using capstone that: (a) Disassembles and annotates the SET_REPORT handler at 0x1C1A8 (file offset 0xC1A8), (b) Disassembles the main dispatch handler at 0x192C0, (c) Traces all memcpy calls (to 0x14D58) and verifies their length arguments, (d) Verifies the 27-byte patch correctness by disassembling bug site (0x24616) and code cave (0x25F36) in both original and patched binaries, (e) Validates BL encoding targets the correct address, (f) Checks code cave was originally all-zeros, (g) Outputs a structured JSON report of all findings",
     "The script should accept command-line arguments: --original (path to mouse_app_fw.bin), --patched (path to mouse_app_fw_PATCHED.bin), --output (path for JSON report). Default paths should be relative to script location.",
@@ -23,5 +23,5 @@
     "Run: python3 debug_toolkit/aj159_debug.py selftest (confirm existing tools still work)"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Script verified successfully. BL at 0x24616 correctly targets 0x25F36. All memcpy calls documented with hardcoded lengths. Code cave confirmed all-zeros in original. OR-merge patch logic validated. Existing selftest still passes. Capstone 5.0.9 available in environment."
 }
