@@ -1,6 +1,9 @@
 # Required: cross-platform USB HID access (Windows / macOS / Linux)
 hidapi>=0.14
 
+# Required: ARM Thumb-2 disassembly for firmware analysis (fw_analyzer.py)
+capstone>=5.0
+
 # Optional: only needed if you extend the toolkit to do raw libusb control
 # transfers or dump report descriptors on Linux.
 # pyusb>=1.2
