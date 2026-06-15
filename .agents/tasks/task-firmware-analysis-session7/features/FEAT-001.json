@@ -23,5 +23,5 @@
     "Run: python3 debug_toolkit/aj159_debug.py selftest (confirm existing tools still work)"
   ],
   "blocked_reason": null,
-  "findings": "Script verified successfully. BL at 0x24616 correctly targets 0x25F36. All memcpy calls documented with hardcoded lengths. Code cave confirmed all-zeros in original. OR-merge patch logic validated. Existing selftest still passes. Capstone 5.0.9 available in environment."
+  "findings": "Script verified successfully. BL at 0x24616 correctly targets 0x25F36. All memcpy calls documented with hardcoded lengths. Code cave confirmed all-zeros in original. OR-merge patch logic validated. Existing selftest still passes. Capstone 5.0.9 available in environment. POST-REVIEW: Fixed logic_summary register references (R4 not R0 for physical report pointer), added SHA-256 firmware identity check, replaced bare open().read() with context managers."
 }
