@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create comprehensive RSA-2048 attack toolkit (rsa_attack.py) and firmware signing script (sign_firmware.py) for the Ajazz AJ159 MCUboot signing key.",
+  "status": "in_progress",
+  "steps": [
+    "Create debug_toolkit/rsa_attack.py implementing all known RSA attacks against the extracted public key",
+    "Create debug_toolkit/sign_firmware.py to sign firmware with recovered private key",
+    "Update debug_toolkit/requirements.txt with new dependencies",
+    "Verify both scripts compile and --help works"
+  ],
+  "acceptance_criteria": [
+    "rsa_attack.py compiles without syntax errors",
+    "sign_firmware.py compiles without syntax errors",
+    "Both scripts produce --help output",
+    "rsa_attack.py implements at least 12 distinct attack vectors",
+    "Scripts handle missing optional dependencies gracefully"
+  ],
+  "verification": [
+    "python3 -c \"import py_compile; py_compile.compile('debug_toolkit/rsa_attack.py', doraise=True)\"",
+    "python3 -c \"import py_compile; py_compile.compile('debug_toolkit/sign_firmware.py', doraise=True)\"",
+    "python3 debug_toolkit/rsa_attack.py --help",
+    "python3 debug_toolkit/sign_firmware.py --help"
+  ],
+  "blocked_reason": null,
+  "findings": null
+}

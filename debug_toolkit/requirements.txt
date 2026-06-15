@@ -1,6 +1,14 @@
 # Required: cross-platform USB HID access (Windows / macOS / Linux)
 hidapi>=0.14
 
+# Required for RSA attack toolkit and firmware signing
+pycryptodome>=3.19
+sympy>=1.12
+requests>=2.28
+
+# Optional: faster arithmetic for RSA attacks (hard to install on Windows)
+# gmpy2>=2.1
+
 # Optional: only needed if you extend the toolkit to do raw libusb control
 # transfers or dump report descriptors on Linux.
 # pyusb>=1.2
