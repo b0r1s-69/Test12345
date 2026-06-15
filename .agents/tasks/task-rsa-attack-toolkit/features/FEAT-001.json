@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Create comprehensive RSA-2048 attack toolkit (rsa_attack.py) and firmware signing script (sign_firmware.py) for the Ajazz AJ159 MCUboot signing key.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create debug_toolkit/rsa_attack.py implementing all known RSA attacks against the extracted public key",
     "Create debug_toolkit/sign_firmware.py to sign firmware with recovered private key",
@@ -23,5 +23,5 @@
     "python3 debug_toolkit/sign_firmware.py --help"
   ],
   "blocked_reason": null,
-  "findings": null
+  "findings": "All 12 attack vectors implemented and verified. Scripts compile cleanly on Python 3.9+. gmpy2 is available in this environment but the fallback paths also work. The ROCA check correctly identifies the key as NOT vulnerable. FactorDB API works with requests. The key resists all automated attacks as expected for a properly generated 2048-bit RSA key."
 }
