@@ -94,9 +94,89 @@ BLE_IMG_EXE_OFFSET = 0x011C291F
 BLE_IMG_SIZE = 170420
 EXPECTED_TOTAL = 301492
 
-# Default paths
+# Default paths (relative to repo structure)
 DEFAULT_FW_PATH = "../firmware_patch/mouse_app_fw_PATCHED.bin"
 DEFAULT_EXE_PATH = "../firmware_patch/ry_upgrade_PATCHED.exe"
+
+# Fallback filenames (checked in the script's own directory)
+FALLBACK_FW_FILENAME = "mouse_app_fw_PATCHED.bin"
+FALLBACK_EXE_FILENAME = "ry_upgrade_PATCHED.exe"
+
+
+# ===========================================================================
+# Path Resolution Helpers
+# ===========================================================================
+
+def resolve_firmware_path(user_path: str) -> Path:
+    """
+    Resolve the firmware .bin path with fallback logic:
+      1. If absolute and exists, use it directly
+      2. Try relative to the script's directory
+      3. Fallback: check script's directory for the known filename
+      4. If nothing works, print helpful error and exit
+    """
+    script_dir = Path(__file__).resolve().parent
+    p = Path(user_path)
+
+    # Absolute path provided
+    if p.is_absolute():
+        if p.exists():
+            return p
+    else:
+        # Try relative to script directory (handles repo-relative defaults)
+        candidate = script_dir / p
+        if candidate.exists():
+            return candidate
+
+    # Fallback: look for the filename in the script's own directory
+    fallback = script_dir / FALLBACK_FW_FILENAME
+    if fallback.exists():
+        return fallback
+
+    # Nothing found - print helpful error
+    print(f"ERROR: Firmware file not found at: {p}")
+    print(f"       Also checked: {fallback}")
+    print()
+    print(f"  Use --fw-path to specify location:")
+    print(f"    python tlv_fuzzer.py --fw-path {FALLBACK_FW_FILENAME} "
+          f"--exe-path {FALLBACK_EXE_FILENAME} --flash --variant all")
+    sys.exit(1)
+
+
+def resolve_exe_path(user_path: str) -> Path:
+    """
+    Resolve the EXE path with fallback logic:
+      1. If absolute and exists, use it directly
+      2. Try relative to the script's directory
+      3. Fallback: check script's directory for the known filename
+      4. If nothing works, print helpful error and exit
+    """
+    script_dir = Path(__file__).resolve().parent
+    p = Path(user_path)
+
+    # Absolute path provided
+    if p.is_absolute():
+        if p.exists():
+            return p
+    else:
+        # Try relative to script directory (handles repo-relative defaults)
+        candidate = script_dir / p
+        if candidate.exists():
+            return candidate
+
+    # Fallback: look for the filename in the script's own directory
+    fallback = script_dir / FALLBACK_EXE_FILENAME
+    if fallback.exists():
+        return fallback
+
+    # Nothing found - print helpful error
+    print(f"ERROR: EXE file not found at: {p}")
+    print(f"       Also checked: {fallback}")
+    print()
+    print(f"  Use --exe-path to specify location:")
+    print(f"    python tlv_fuzzer.py --fw-path {FALLBACK_FW_FILENAME} "
+          f"--exe-path {FALLBACK_EXE_FILENAME} --flash --variant all")
+    sys.exit(1)
 
 
 # ===========================================================================
@@ -628,14 +708,9 @@ Examples:
     print("  Testing signature verification bypass via TLV manipulation")
     print("=" * 70)
 
-    # Resolve paths
-    script_dir = Path(__file__).parent
-    fw_path = Path(args.fw_path)
-    if not fw_path.is_absolute():
-        fw_path = script_dir / fw_path
-    exe_path = Path(args.exe_path)
-    if not exe_path.is_absolute():
-        exe_path = script_dir / exe_path
+    # Resolve paths (with fallback to script's own directory)
+    fw_path = resolve_firmware_path(args.fw_path)
+    exe_path = resolve_exe_path(args.exe_path)
 
     # Read inputs
     print(f"\n[*] Loading firmware components...")

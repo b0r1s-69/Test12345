@@ -50,8 +50,11 @@ KNOWN_KEYHASH = bytes.fromhex(
     "fc5701dc6135e1323847bdc40f04d2e5bee5833b23c29f93593d00018cfa9994"
 )
 
-# Default EXE path
+# Default EXE path (relative to repo structure)
 DEFAULT_EXE = "../firmware_patch/ry_upgrade_PATCHED.exe"
+
+# Fallback filename (checked in the script's own directory)
+FALLBACK_EXE_FILENAME = "ry_upgrade_PATCHED.exe"
 
 # RSA-2048 key sizes
 RSA_2048_MODULUS_SIZE = 256  # bytes
@@ -481,13 +484,30 @@ If the key is found, it means:
     print("                  bee5833b23c29f93593d00018cfa9994")
     print("=" * 70)
 
-    # Resolve path relative to script directory
+    # Resolve path with fallback to script's own directory
     exe_path = Path(args.exe_path)
     if not exe_path.is_absolute():
-        exe_path = Path(__file__).parent / exe_path
+        script_dir = Path(__file__).resolve().parent
+        candidate = script_dir / exe_path
+        if candidate.exists():
+            exe_path = candidate
+        else:
+            # Fallback: check for the filename in the script's directory
+            fallback = script_dir / FALLBACK_EXE_FILENAME
+            if fallback.exists():
+                exe_path = fallback
+            else:
+                exe_path = candidate  # Use the original for the error message
+    elif not exe_path.exists():
+        pass  # Will fail below with a helpful message
 
     if not exe_path.exists():
-        sys.exit(f"ERROR: EXE file not found: {exe_path}")
+        print(f"ERROR: EXE file not found: {exe_path}")
+        print(f"       Also checked: {Path(__file__).resolve().parent / FALLBACK_EXE_FILENAME}")
+        print()
+        print(f"  Use --exe-path to specify location:")
+        print(f"    python extract_pubkey.py --exe-path {FALLBACK_EXE_FILENAME}")
+        sys.exit(1)
 
     print(f"\n[*] Loading EXE: {exe_path}")
     exe_data = exe_path.read_bytes()
