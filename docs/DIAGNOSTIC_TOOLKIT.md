@@ -1,8 +1,8 @@
-# AJ159 APEX HID Exploit Toolkit
+# AJ159 APEX HID Diagnostic Toolkit
 
 ## Overview
 
-This toolkit provides tools for exploiting a stack buffer overflow vulnerability in the Ajazz AJ159 APEX gaming mouse firmware. The goal is to achieve arbitrary code execution via USB HID, bypassing the MCUboot RSA-2048 signature verification that prevents flashing modified firmware.
+This toolkit provides tools for analyzing a stack buffer overflow vulnerability in the Ajazz AJ159 APEX gaming mouse firmware. The goal is to achieve arbitrary code execution via USB HID, providing an alternative path past the MCUboot RSA-2048 signature verification that prevents flashing modified firmware.
 
 **Target:** Ajazz AJ159 APEX Gaming Mouse  
 **MCU:** nRF52840 (ARM Cortex-M4F, 1MB flash, 256KB RAM)  
@@ -22,7 +22,7 @@ The SET_REPORT handler at firmware address `0x1C1A8` contains a classic stack bu
 
 The handler receives **64-byte** HID Feature Reports into this **60-byte** stack buffer. This provides a 4-byte overflow directly into saved register R0 on the stack.
 
-### Additional Attack Surface
+### Additional Analysis Surface
 
 Five dangerous `memcpy` sites copy larger amounts to stack buffers:
 
@@ -130,53 +130,53 @@ python3 hid_deferred_probe.py --deep --timing --output probe_results.json
 - Measures timing between SET and GET for deferred processing detection
 - Identifies which code paths actually process data beyond validation
 
-### 2. hid_fuzzer.py
+### 2. hid_protocol_tester.py
 
 **Purpose:** Trigger crashes via buffer overflow by sending malformed/crafted SET_REPORT payloads.
 
 ```bash
-# Run all 5 fuzzing strategies
-python3 hid_fuzzer.py --strategy all
+# Run all 5 testing strategies
+python3 hid_protocol_tester.py --strategy all
 
 # Stack overflow targeting bytes 60-63
-python3 hid_fuzzer.py --strategy overflow
+python3 hid_protocol_tester.py --strategy overflow
 
 # Report ID sweep with De Bruijn pattern (offset detection)
-python3 hid_fuzzer.py --strategy sweep
+python3 hid_protocol_tester.py --strategy sweep
 
-# Vendor-specific ID fuzzing (0x13-0x18)
-python3 hid_fuzzer.py --strategy vendor
+# Vendor-specific ID testing (0x13-0x18)
+python3 hid_protocol_tester.py --strategy vendor
 
 # Validation gate boundary testing
-python3 hid_fuzzer.py --strategy boundary
+python3 hid_protocol_tester.py --strategy boundary
 
 # Race condition / queue overflow testing
-python3 hid_fuzzer.py --strategy rapidfire
+python3 hid_protocol_tester.py --strategy rapidfire
 
 # Custom options
-python3 hid_fuzzer.py --strategy sweep --start-id 0x13 --end-id 0x18 --delay 10
+python3 hid_protocol_tester.py --strategy sweep --start-id 0x13 --end-id 0x18 --delay 10
 
 # Dry run (show payloads without connecting)
-python3 hid_fuzzer.py --dry-run
+python3 hid_protocol_tester.py --dry-run
 
 # Save full log for crash_analyzer.py
-python3 hid_fuzzer.py --strategy all --log fuzz_results.json
+python3 hid_protocol_tester.py --strategy all --log test_results.json
 ```
 
 **Strategies:**
 
 1. **overflow** - Direct stack overflow: crafts bytes 60-63 to corrupt saved R0
 2. **sweep** - De Bruijn pattern across all report IDs for offset identification
-3. **vendor** - Targeted fuzzing of vendor IDs 0x13-0x18 (least tested paths)
+3. **vendor** - Targeted testing of vendor IDs 0x13-0x18 (least tested paths)
 4. **boundary** - Pushes validation gate fields to max/beyond limits
 5. **rapidfire** - Sends packets with no delay to trigger race conditions
 
 ### 3. crash_analyzer.py
 
-**Purpose:** Detect crashes, analyze crash-inducing payloads, and narrow down the exact bytes that trigger exploitation.
+**Purpose:** Detect crashes, analyze crash-inducing payloads, and narrow down the exact bytes that trigger the overflow.
 
 ```bash
-# Monitor for crashes (use alongside fuzzer in another terminal)
+# Monitor for crashes (use alongside protocol tester in another terminal)
 python3 crash_analyzer.py --monitor
 
 # Test a specific payload (hex string)
@@ -185,11 +185,11 @@ python3 crash_analyzer.py --payload "13400101AABBCCDDEE..."
 # Test and binary-search for critical byte
 python3 crash_analyzer.py --payload "13400101..." --bisect
 
-# Replay crashes from fuzzer log
-python3 crash_analyzer.py --replay-log fuzz_results.json
+# Replay crashes from test log
+python3 crash_analyzer.py --replay-log test_results.json
 
-# Generate exploit development report
-python3 crash_analyzer.py --payload "13400101..." --report exploit_report.json
+# Generate analysis report
+python3 crash_analyzer.py --payload "13400101..." --report analysis_report.json
 ```
 
 **Capabilities:**
@@ -198,7 +198,7 @@ python3 crash_analyzer.py --payload "13400101..." --report exploit_report.json
 - Binary search to narrow down critical byte/bit
 - De Bruijn pattern offset identification
 - Register value analysis based on overflow position
-- Exploit development report generation
+- Analysis report generation
 
 ## Usage Workflow
 
@@ -215,19 +215,19 @@ Look for IDs that:
 - Show state changes after SET_REPORT
 - Have timing differences suggesting deferred processing
 
-### Step 2: Fuzz
+### Step 2: Test
 
-Start with targeted fuzzing on responsive IDs:
+Start with targeted testing on responsive IDs:
 
 ```bash
 # Start with the overflow strategy on discovered responsive IDs
-python3 hid_fuzzer.py --strategy overflow --log fuzz.json
+python3 hid_protocol_tester.py --strategy overflow --log test.json
 
-# If no crash, try vendor path fuzzing
-python3 hid_fuzzer.py --strategy vendor --log fuzz_vendor.json
+# If no crash, try vendor path testing
+python3 hid_protocol_tester.py --strategy vendor --log test_vendor.json
 
 # Aggressive testing
-python3 hid_fuzzer.py --strategy all --delay 5 --log fuzz_all.json
+python3 hid_protocol_tester.py --strategy all --delay 5 --log test_all.json
 ```
 
 ### Step 3: Analyze
@@ -236,16 +236,16 @@ When a crash is found:
 
 ```bash
 # Replay and confirm the crash
-python3 crash_analyzer.py --replay-log fuzz.json
+python3 crash_analyzer.py --replay-log test.json
 
 # Narrow down to the exact byte
 python3 crash_analyzer.py --payload "<crash_payload_hex>" --bisect
 
 # Generate full report
-python3 crash_analyzer.py --payload "<crash_payload_hex>" --report exploit.json
+python3 crash_analyzer.py --payload "<crash_payload_hex>" --report analysis.json
 ```
 
-### Step 4: Exploit (if crash found)
+### Step 4: Leverage (if crash found)
 
 Based on crash analysis:
 
@@ -299,10 +299,10 @@ Start: Can we crash the device via HID?
   |     |     |     +-- Can we reach LR? (return address)
   |     |     |     |     |
   |     |     |     |     +-- YES: Build ROP chain or jump to shellcode
-  |     |     |     |     |        -> EXPLOIT COMPLETE
+  |     |     |     |     |        -> CODE EXECUTION ACHIEVED
   |     |     |     |     |
   |     |     |     |     +-- NO: Use R0-R7 control for argument injection
-  |     |     |     |              -> Limited exploit (call known functions)
+  |     |     |     |              -> Limited control (call known functions)
   |     |     |     |
   |     |     |     +-- NO: Crash is not at controllable offset
   |     |     |           -> Try different report IDs / memcpy paths
@@ -321,7 +321,7 @@ Start: Can we crash the device via HID?
         |     -> Try different report IDs, timing, memcpy paths
         |
         +-- Device validates all input properly
-              -> HID path may be unexploitable
+              -> HID path may not be viable
               -> Fall back to SWD hardware debug (requires soldering)
 ```
 
@@ -346,9 +346,9 @@ lsusb | grep 3151
 | File | Purpose |
 |------|---------|
 | `hid_deferred_probe.py` | Map deferred processing paths |
-| `hid_fuzzer.py` | Smart fuzzing with 5 strategies |
+| `hid_protocol_tester.py` | Smart protocol testing with 5 strategies |
 | `crash_analyzer.py` | Crash detection and analysis |
 | `probe_reports.py` | Basic report ID enumeration (existing) |
 | `aj159_debug.py` | General debug toolkit (existing) |
-| `tlv_fuzzer.py` | MCUboot TLV bypass attempts (existing) |
+| `tlv_tester.py` | MCUboot TLV variant testing (existing) |
 | `99-aj159.rules` | Linux udev rules for non-root access |

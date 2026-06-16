@@ -462,7 +462,7 @@ The tool searches for the RSA-2048 public key whose SHA-256 hash is:
 
 If the key is found, it means:
   - If it's a sample/default key: the private key may be publicly available
-  - If it's vendor-specific: key factoring or side-channel attacks needed
+  - If it's vendor-specific: key factoring or side-channel analysis needed
   - Either way: knowing the exact key format helps with further analysis
         """
     )

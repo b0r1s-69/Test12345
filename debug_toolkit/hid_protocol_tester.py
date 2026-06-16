@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-hid_fuzzer.py - Smart HID SET_REPORT Fuzzer for Ajazz AJ159 APEX Mouse
-========================================================================
+hid_protocol_tester.py - Smart HID SET_REPORT Protocol Tester for Ajazz AJ159 APEX Mouse
+===========================================================================================
 
-A comprehensive HID fuzzer targeting buffer overflow exploitation in the
+A comprehensive HID protocol tester targeting buffer boundary analysis in the
 AJ159 firmware. The SET_REPORT handler at 0x1C1A8 allocates only 60 bytes
 on the stack (SUB SP, #0x3C) but receives 64-byte feature reports, creating
 a potential stack buffer overflow of 4 bytes into saved registers.
@@ -34,15 +34,15 @@ PREREQUISITES:
   - Linux: run as root or configure udev rules (99-aj159.rules)
 
 USAGE:
-  python hid_fuzzer.py --strategy all                   # Run all strategies
-  python hid_fuzzer.py --strategy overflow              # Only stack overflow test
-  python hid_fuzzer.py --strategy sweep                 # Report ID sweep
-  python hid_fuzzer.py --strategy vendor                # Vendor ID fuzzing
-  python hid_fuzzer.py --strategy boundary              # Parameter boundary test
-  python hid_fuzzer.py --strategy rapidfire             # Race condition test
-  python hid_fuzzer.py --strategy overflow --delay 100  # Custom inter-packet delay
-  python hid_fuzzer.py --start-id 0x13 --end-id 0x18   # Limit ID range
-  python hid_fuzzer.py --log crash_log.json             # Save results to file
+  python hid_protocol_tester.py --strategy all                   # Run all strategies
+  python hid_protocol_tester.py --strategy overflow              # Only stack overflow test
+  python hid_protocol_tester.py --strategy sweep                 # Report ID sweep
+  python hid_protocol_tester.py --strategy vendor                # Vendor ID testing
+  python hid_protocol_tester.py --strategy boundary              # Parameter boundary test
+  python hid_protocol_tester.py --strategy rapidfire             # Race condition test
+  python hid_protocol_tester.py --strategy overflow --delay 100  # Custom inter-packet delay
+  python hid_protocol_tester.py --start-id 0x13 --end-id 0x18   # Limit ID range
+  python hid_protocol_tester.py --log crash_log.json             # Save results to file
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ DANGEROUS_MEMCPY = {
 KNOWN_IDS = [0x04, 0x05, 0x06, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]
 VENDOR_IDS = [0x13, 0x14, 0x15, 0x16, 0x17, 0x18]
 
-# Fuzzing strategies
+# Testing strategies
 STRATEGIES = ['overflow', 'sweep', 'vendor', 'boundary', 'rapidfire']
 
 
@@ -258,11 +258,11 @@ def wait_for_device(hid_module, timeout_s: float = 10.0) -> Optional[str]:
 
 
 # ===========================================================================
-# Fuzzing Strategies
+# Testing Strategies
 # ===========================================================================
 
-class FuzzResult:
-    """Result of a single fuzz attempt."""
+class TestResult:
+    """Result of a single test attempt."""
 
     def __init__(self, strategy: str, report_id: int, payload: bytes):
         self.strategy = strategy
@@ -291,10 +291,10 @@ class FuzzResult:
         }
 
 
-def send_fuzz_payload(device, report_id: int, payload: bytes,
-                      strategy: str) -> FuzzResult:
-    """Send a fuzz payload and check for crash."""
-    result = FuzzResult(strategy, report_id, payload)
+def send_test_payload(device, report_id: int, payload: bytes,
+                      strategy: str) -> TestResult:
+    """Send a test payload and check for crash."""
+    result = TestResult(strategy, report_id, payload)
 
     # Build the full send buffer: [0x00 report ID prefix] + [64-byte payload]
     send_buf = bytes([REPORT_ID]) + payload
@@ -331,7 +331,7 @@ def send_fuzz_payload(device, report_id: int, payload: bytes,
 
 
 def strategy_overflow(device, delay_ms: float, start_id: int,
-                      end_id: int, verbose: bool) -> List[FuzzResult]:
+                      end_id: int, verbose: bool) -> List[TestResult]:
     """
     STRATEGY 1 - Length overflow targeting saved registers.
 
@@ -391,7 +391,7 @@ def strategy_overflow(device, delay_ms: float, start_id: int,
             # The critical overflow bytes
             payload[OVERFLOW_START:OVERFLOW_START + 4] = overflow_bytes
 
-            result = send_fuzz_payload(device, rid, bytes(payload), 'overflow')
+            result = send_test_payload(device, rid, bytes(payload), 'overflow')
             result.notes = f"overflow={desc}"
             results.append(result)
 
@@ -412,7 +412,7 @@ def strategy_overflow(device, delay_ms: float, start_id: int,
 
 
 def strategy_sweep(device, delay_ms: float, start_id: int,
-                   end_id: int, verbose: bool) -> List[FuzzResult]:
+                   end_id: int, verbose: bool) -> List[TestResult]:
     """
     STRATEGY 2 - Report ID sweep with De Bruijn pattern.
 
@@ -439,7 +439,7 @@ def strategy_sweep(device, delay_ms: float, start_id: int,
         payload[0] = rid
         payload[1:] = pattern[1:REPORT_SIZE]
 
-        result = send_fuzz_payload(device, rid, bytes(payload), 'sweep')
+        result = send_test_payload(device, rid, bytes(payload), 'sweep')
         results.append(result)
 
         if verbose and (idx % 16 == 0 or not result.device_alive):
@@ -460,9 +460,9 @@ def strategy_sweep(device, delay_ms: float, start_id: int,
 
 
 def strategy_vendor(device, delay_ms: float, start_id: int,
-                    end_id: int, verbose: bool) -> List[FuzzResult]:
+                    end_id: int, verbose: bool) -> List[TestResult]:
     """
-    STRATEGY 3 - Vendor report ID fuzzing (0x13-0x18).
+    STRATEGY 3 - Vendor report ID testing (0x13-0x18).
 
     These IDs use the least-tested code paths. The firmware has special
     dispatch at 0x17E1E for IDs 0x13 and 0x17 (indirect function call
@@ -480,7 +480,7 @@ def strategy_vendor(device, delay_ms: float, start_id: int,
 
     vendor_ids = [i for i in VENDOR_IDS if start_id <= i <= end_id]
 
-    print(f"\n  [STRATEGY 3] Vendor report ID fuzzing")
+    print(f"\n  [STRATEGY 3] Vendor report ID testing")
     print(f"  Target IDs: {', '.join(f'0x{i:02X}' for i in vendor_ids)}")
     print(f"  Special dispatch (0x13, 0x17): indirect call at 0x17E2C")
     print()
@@ -513,7 +513,7 @@ def strategy_vendor(device, delay_ms: float, start_id: int,
             elif len(payload) > REPORT_SIZE:
                 payload = payload[:REPORT_SIZE]
 
-            result = send_fuzz_payload(device, rid, payload, 'vendor')
+            result = send_test_payload(device, rid, payload, 'vendor')
             result.notes = f"pattern={pattern_name}"
             results.append(result)
 
@@ -536,7 +536,7 @@ def strategy_vendor(device, delay_ms: float, start_id: int,
 
 
 def strategy_boundary(device, delay_ms: float, start_id: int,
-                      end_id: int, verbose: bool) -> List[FuzzResult]:
+                      end_id: int, verbose: bool) -> List[TestResult]:
     """
     STRATEGY 4 - Parameter boundary testing.
 
@@ -602,7 +602,7 @@ def strategy_boundary(device, delay_ms: float, start_id: int,
                 if offset < REPORT_SIZE:
                     payload[offset] = valid_val
 
-            result = send_fuzz_payload(device, rid, bytes(payload), 'boundary')
+            result = send_test_payload(device, rid, bytes(payload), 'boundary')
             result.notes = f"interp={interp_idx} all_max_valid"
             results.append(result)
 
@@ -620,7 +620,7 @@ def strategy_boundary(device, delay_ms: float, start_id: int,
                     test_payload = bytearray(payload)  # Start from valid base
                     test_payload[offset] = invalid_val
 
-                    result = send_fuzz_payload(device, rid, bytes(test_payload),
+                    result = send_test_payload(device, rid, bytes(test_payload),
                                               'boundary')
                     result.notes = (f"interp={interp_idx} "
                                     f"{field_name}={invalid_val:#x} (valid={valid_val})")
@@ -645,7 +645,7 @@ def strategy_boundary(device, delay_ms: float, start_id: int,
 
 
 def strategy_rapidfire(device, delay_ms: float, start_id: int,
-                       end_id: int, verbose: bool) -> List[FuzzResult]:
+                       end_id: int, verbose: bool) -> List[TestResult]:
     """
     STRATEGY 5 - Rapid-fire sending (race condition / queue overflow).
 
@@ -680,7 +680,7 @@ def strategy_rapidfire(device, delay_ms: float, start_id: int,
         for i in range(burst_count):
             # Vary a byte so each packet is slightly different
             payload[3] = i & 0xFF
-            result = send_fuzz_payload(device, rid, bytes(payload), 'rapidfire')
+            result = send_test_payload(device, rid, bytes(payload), 'rapidfire')
             result.notes = f"burst_same_id={rid:#x} packet={i}"
             results.append(result)
 
@@ -703,7 +703,7 @@ def strategy_rapidfire(device, delay_ms: float, start_id: int,
         payload[2] = 0x01
         payload[3] = i & 0xFF
 
-        result = send_fuzz_payload(device, rid, bytes(payload), 'rapidfire')
+        result = send_test_payload(device, rid, bytes(payload), 'rapidfire')
         result.notes = f"interleave packet={i} id={rid:#x}"
         results.append(result)
 
@@ -716,7 +716,7 @@ def strategy_rapidfire(device, delay_ms: float, start_id: int,
         print(f"      {interleave_count} interleaved packets sent, device alive")
 
     # Test 3: Alternating SET/GET without pauses
-    print(f"    Test 3: Rapid SET+GET alternation (timing attack)")
+    print(f"    Test 3: Rapid SET+GET alternation (timing test)")
     for rid in target_ids[:3]:
         payload = bytearray(REPORT_SIZE)
         payload[0] = rid
@@ -735,7 +735,7 @@ def strategy_rapidfire(device, delay_ms: float, start_id: int,
         alive = check_device_alive(device)
         if not alive:
             print(f"      [!!!] CRASH during rapid SET+GET on ID 0x{rid:02X}")
-            result = FuzzResult('rapidfire', rid, bytes(payload))
+            result = TestResult('rapidfire', rid, bytes(payload))
             result.device_alive = False
             result.crash_type = 'detected'
             result.notes = "rapid SET+GET alternation"
@@ -754,13 +754,13 @@ def strategy_rapidfire(device, delay_ms: float, start_id: int,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AJ159 APEX - Smart HID SET_REPORT Fuzzer",
+        description="AJ159 APEX - Smart HID SET_REPORT Protocol Tester",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Fuzzing strategies:
+Testing strategies:
   overflow   - Stack buffer overflow (bytes 60-63 into saved registers)
   sweep      - Report ID sweep with De Bruijn pattern (offset detection)
-  vendor     - Vendor-specific ID fuzzing (0x13-0x18, special dispatch)
+  vendor     - Vendor-specific ID testing (0x13-0x18, special dispatch)
   boundary   - Validation gate boundary testing (max/invalid field values)
   rapidfire  - Race condition / queue overflow (no inter-packet delay)
   all        - Run all strategies in sequence
@@ -780,17 +780,17 @@ Examples:
   %(prog)s --strategy overflow                    # Test stack overflow
   %(prog)s --strategy all --delay 50              # All strategies, 50ms delay
   %(prog)s --strategy vendor --start-id 0x13      # Vendor IDs from 0x13
-  %(prog)s --strategy sweep --log fuzz.json       # Sweep with JSON logging
+  %(prog)s --strategy sweep --log test.json       # Sweep with JSON logging
         """
     )
     parser.add_argument(
         '--strategy', type=str, default='all',
         choices=STRATEGIES + ['all'],
-        help='Fuzzing strategy to use (default: all)'
+        help='Testing strategy to use (default: all)'
     )
     parser.add_argument(
         '--delay', type=float, default=20.0,
-        help='Delay in ms between fuzz packets (default: 20, 0 for rapidfire)'
+        help='Delay in ms between test packets (default: 20, 0 for rapidfire)'
     )
     parser.add_argument(
         '--start-id', type=lambda x: int(x, 0), default=0x00,
@@ -802,11 +802,11 @@ Examples:
     )
     parser.add_argument(
         '--log', type=str, default=None,
-        help='Save fuzz results to JSON log file'
+        help='Save test results to JSON log file'
     )
     parser.add_argument(
         '-v', '--verbose', action='store_true',
-        help='Verbose output for each fuzz attempt'
+        help='Verbose output for each test attempt'
     )
     parser.add_argument(
         '--dry-run', action='store_true',
@@ -817,7 +817,7 @@ Examples:
 
     print()
     print("=" * 70)
-    print("  AJ159 APEX - Smart HID SET_REPORT Fuzzer")
+    print("  AJ159 APEX - Smart HID SET_REPORT Protocol Tester")
     print("  Target: VID 0x3151, PID 0x4026 (normal mode), Interface 2")
     print("=" * 70)
     print()
@@ -902,7 +902,7 @@ Examples:
                 elif recovery == 'boot':
                     print(f"  Device entered BOOT mode (hard crash/watchdog)!")
                     crash_payload.crash_type = 'hard'
-                    print(f"  [!!!] This is exploitable - device rebooted!")
+                    print(f"  [!!!] This is significant - device rebooted!")
                     break
                 else:
                     print(f"  Device did not re-enumerate (hang)")
@@ -933,7 +933,7 @@ Examples:
                 print()
 
             print(f"  NEXT STEPS:")
-            print(f"    1. Run crash_analyzer.py --replay-log {args.log or 'fuzz_log.json'}")
+            print(f"    1. Run crash_analyzer.py --replay-log {args.log or 'test_log.json'}")
             print(f"    2. Narrow down exact crash byte with binary search")
             print(f"    3. If offset is in bytes 60-63: direct register control")
             print(f"    4. Build shellcode payload for code execution")

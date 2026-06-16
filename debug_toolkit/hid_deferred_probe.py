@@ -733,9 +733,9 @@ Examples:
 
         print()
         print("  Next steps:")
-        print("  - IDs with state changes are candidates for deeper exploitation")
-        print("  - Use hid_fuzzer.py to test boundary conditions on responsive IDs")
-        print("  - IDs 0x13/0x17 (special dispatch) may have exploitable indirect calls")
+        print("  - IDs with state changes are candidates for deeper analysis")
+        print("  - Use hid_protocol_tester.py to test boundary conditions on responsive IDs")
+        print("  - IDs 0x13/0x17 (special dispatch) may have interesting indirect calls")
         print()
 
     except KeyboardInterrupt:

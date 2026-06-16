@@ -6,7 +6,7 @@ sign_firmware.py - MCUboot Firmware Image Signing Tool
 Signs a patched firmware image for the Ajazz AJ159 using a recovered RSA-2048
 private key. Produces a properly signed MCUboot image that can be flashed.
 
-If the RSA key has been factored (using rsa_attack.py), this tool takes the
+If the RSA key has been factored (using rsa_analysis.py), this tool takes the
 recovered private key and signs the patched firmware binary with the correct
 MCUboot image format (TLV with RSA-2048 PKCS#1 v1.5 signature).
 
@@ -214,7 +214,7 @@ def parse_tlvs(data: bytes) -> list:
 # ===========================================================================
 
 def load_private_key_json(path: Path) -> Optional[RSA.RsaKey]:
-    """Load private key from JSON format (output of rsa_attack.py)."""
+    """Load private key from JSON format (output of rsa_analysis.py)."""
     if not HAS_PYCRYPTODOME:
         print("ERROR: pycryptodome required. Install with: pip install pycryptodome")
         return None
@@ -481,10 +481,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 This tool signs firmware images for the Ajazz AJ159 mouse using a recovered
-RSA-2048 private key. The key must first be factored using rsa_attack.py.
+RSA-2048 private key. The key must first be factored using rsa_analysis.py.
 
 Key formats supported:
-  - JSON (output of rsa_attack.py): {"n": "0x...", "e": 65537, "d": "0x...", ...}
+  - JSON (output of rsa_analysis.py): {"n": "0x...", "e": 65537, "d": "0x...", ...}
   - PEM (standard RSA private key file)
 
 Examples:
@@ -637,7 +637,7 @@ MCUboot Image Format:
     # Sign mode - need both key and firmware
     if not args.key:
         print("ERROR: --key is required for signing")
-        print("  Use recovered_private_key.json from rsa_attack.py")
+        print("  Use recovered_private_key.json from rsa_analysis.py")
         print("  Or provide a PEM private key file")
         print()
         parser.print_help()
@@ -654,7 +654,7 @@ MCUboot Image Format:
     if not key_path.exists():
         print(f"ERROR: Key file not found: {key_path}")
         print()
-        print("  Run rsa_attack.py first to factor the key.")
+        print("  Run rsa_analysis.py first to factor the key.")
         print("  If successful, it saves: debug_toolkit/recovered_private_key.json")
         sys.exit(1)
 

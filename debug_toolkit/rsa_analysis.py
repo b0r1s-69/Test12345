@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-rsa_attack.py - Comprehensive RSA-2048 Factoring Attack Toolkit
-================================================================
+rsa_analysis.py - Comprehensive RSA-2048 Factoring Analysis Toolkit
+====================================================================
 
 Attempts to factor the Ajazz AJ159 MCUboot RSA-2048 signing key using
-every known weakness and attack vector. If factorization succeeds, the
+every known weakness and analysis method. If factorization succeeds, the
 private key can be recovered to sign patched firmware images.
 
 Target Key:
@@ -12,18 +12,18 @@ Target Key:
   Exponent (e): 65537
   KEYHASH: fc5701dc6135e1323847bdc40f04d2e5bee5833b23c29f93593d00018cfa9994
 
-Attack Vectors Implemented:
+Analysis Methods Implemented:
   1.  Trial division (first 1M primes)
   2.  Fermat factorization (close primes)
   3.  Pollard's p-1 (smooth primes)
   4.  Pollard's rho (Brent variant)
   5.  Williams' p+1 (p+1 smooth factor)
-  6.  Wiener's attack (small private exponent d)
+  6.  Wiener's method (small private exponent d)
   7.  GCD against known firmware keys (Nordic SDK, MCUboot defaults)
   8.  FactorDB.com API lookup
   9.  ROCA vulnerability check (CVE-2017-15361, Infineon TPM keys)
   10. Small |p-q| difference check
-  11. Boneh-Durfee attack (partial key exposure)
+  11. Boneh-Durfee method (partial key exposure)
   12. Common factor with random RSA keys (batch GCD concept)
 
 PREREQUISITES:
@@ -31,11 +31,11 @@ PREREQUISITES:
   Optional: pip install gmpy2 (faster arithmetic, hard on Windows)
 
 USAGE:
-  python rsa_attack.py                   # Run all attacks with default timeout
-  python rsa_attack.py --timeout 600     # 10 minute timeout per attack
-  python rsa_attack.py --attacks fermat,rho  # Run specific attacks only
-  python rsa_attack.py --dry-run         # Show what would be run
-  python rsa_attack.py --output results.json  # Save results to JSON
+  python rsa_analysis.py                   # Run all methods with default timeout
+  python rsa_analysis.py --timeout 600     # 10 minute timeout per method
+  python rsa_analysis.py --methods fermat,rho  # Run specific methods only
+  python rsa_analysis.py --dry-run         # Show what would be run
+  python rsa_analysis.py --output results.json  # Save results to JSON
 
 CROSS-PLATFORM: Works on Windows, macOS, and Linux.
 """
@@ -123,7 +123,7 @@ TARGET_DER_HEX = (
 
 TARGET_KEYHASH = "fc5701dc6135e1323847bdc40f04d2e5bee5833b23c29f93593d00018cfa9994"
 
-# Known firmware/MCUboot sample keys (moduli in hex) for GCD attack
+# Known firmware/MCUboot sample keys (moduli in hex) for GCD analysis
 KNOWN_KEYS: Dict[str, int] = {
     # MCUboot default root-rsa-2048.pem (from MCUboot repo imgtool)
     "mcuboot_root_rsa_2048": int(
@@ -259,11 +259,11 @@ def format_time(seconds: float) -> str:
 
 
 class TimeoutError(Exception):
-    """Raised when an attack exceeds its time limit."""
+    """Raised when an analysis method exceeds its time limit."""
     pass
 
 
-class AttackTimeout:
+class AnalysisTimeout:
     """Context manager for timeout handling (cross-platform)."""
 
     def __init__(self, seconds: int):
@@ -283,30 +283,30 @@ class AttackTimeout:
             signal.alarm(0)
 
     def _handler(self, signum, frame):
-        raise TimeoutError(f"Attack timed out after {self.seconds}s")
+        raise TimeoutError(f"Method timed out after {self.seconds}s")
 
     def check(self):
         """Check if timeout exceeded (for Windows compatibility)."""
         elapsed = time.time() - self.start_time
         if elapsed > self.seconds:
             raise TimeoutError(
-                f"Attack timed out after {format_time(elapsed)}"
+                f"Method timed out after {format_time(elapsed)}"
             )
 
 
 # ===========================================================================
-# Attack Implementations
+# Analysis Implementations
 # ===========================================================================
 
-def attack_trial_division(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_trial_division(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 1: Trial Division
+    Method 1: Trial Division
     
     Try dividing n by all primes up to 1,000,000.
     Effective if one factor is very small (unlikely for RSA-2048 but must check).
     """
     print("    Trying first 1,000,000 primes...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -350,16 +350,16 @@ def _sieve_of_eratosthenes(limit: int) -> List[int]:
     return [i for i in range(2, limit + 1) if is_prime_arr[i]]
 
 
-def attack_fermat(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_fermat(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 2: Fermat Factorization
+    Method 2: Fermat Factorization
     
     If n = p*q where |p-q| is small, then n = a^2 - b^2 = (a+b)(a-b).
     Start with a = ceil(sqrt(n)) and increment.
     Effective when p and q are close together.
     """
     print("    Starting from ceil(sqrt(n))...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -404,16 +404,16 @@ def attack_fermat(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
         return None
 
 
-def attack_pollard_p1(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_pollard_p1(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 3: Pollard's p-1
+    Method 3: Pollard's p-1
     
     If p-1 is B-smooth (all prime factors <= B), then for M = lcm(1..B),
     we have a^M = 1 (mod p) by Fermat's little theorem.
     Then gcd(a^M - 1, n) may reveal p.
     """
     print("    Testing B-smoothness bounds: 100K, 500K, 1M...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -462,16 +462,16 @@ def attack_pollard_p1(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int
         return None
 
 
-def attack_pollard_rho(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_pollard_rho(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 4: Pollard's Rho (Brent's improvement)
+    Method 4: Pollard's Rho (Brent's improvement)
     
     Probabilistic factoring using cycle detection in the sequence
     x_{i+1} = x_i^2 + c (mod n). Brent's variant is faster.
     Expected time: O(n^(1/4)) operations.
     """
     print("    Running Brent's rho variant with multiple starting points...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -534,16 +534,16 @@ def attack_pollard_rho(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, in
         return None
 
 
-def attack_williams_p1(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_williams_p1(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 5: Williams' p+1
+    Method 5: Williams' p+1
     
     If p+1 is B-smooth, this method can find p.
     Uses Lucas sequences: V_m(a) mod n.
     Complements Pollard's p-1 (works when p+1 is smooth instead of p-1).
     """
     print("    Testing if any factor p has smooth p+1...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -598,17 +598,17 @@ def attack_williams_p1(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, in
         return None
 
 
-def attack_wiener(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_wiener(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 6: Wiener's Attack (Small Private Exponent)
+    Method 6: Wiener's Method (Small Private Exponent)
     
     If the private exponent d < n^(1/4) / 3, the continued fraction
-    expansion of e/n reveals d. This attack is fast and deterministic.
+    expansion of e/n reveals d. This method is fast and deterministic.
     """
     e = TARGET_EXPONENT
     print(f"    Computing continued fraction expansion of e/n...")
     print(f"    Wiener bound: d < n^(1/4)/3 = ~{isqrt(isqrt(n))//3}")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -647,13 +647,13 @@ def attack_wiener(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
             q = (s - sqrt_disc) // 2
 
             if p * q == n:
-                print(f"    [!!!] WIENER'S ATTACK SUCCEEDED!")
+                print(f"    [!!!] WIENER'S METHOD SUCCEEDED!")
                 print(f"    Private exponent d = {d}")
                 print(f"    d has {d.bit_length()} bits")
                 timer.__exit__()
                 return (p, q)
 
-        print(f"    Private exponent is not small (Wiener's attack does not apply)")
+        print(f"    Private exponent is not small (Wiener's method does not apply)")
         timer.__exit__()
         return None
 
@@ -691,16 +691,16 @@ def _continued_fraction_convergents(
     return convergents
 
 
-def attack_gcd_known_keys(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_gcd_known_keys(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 7: GCD against Known Firmware Keys
+    Method 7: GCD against Known Firmware Keys
     
     If the key shares a factor with any known firmware RSA key
     (e.g., due to shared prime generation or poor RNG), GCD reveals it.
     Checks against Nordic SDK samples, MCUboot defaults, and other known keys.
     """
     print(f"    Checking GCD against {len(KNOWN_KEYS)} known keys...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -742,9 +742,9 @@ def attack_gcd_known_keys(n: int, timeout: int, **kwargs) -> Optional[Tuple[int,
         return None
 
 
-def attack_factordb(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_factordb(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 8: FactorDB.com API Lookup
+    Method 8: FactorDB.com API Lookup
     
     Check if this modulus has already been factored and submitted to FactorDB.
     This is a free public database of known factorizations.
@@ -755,7 +755,7 @@ def attack_factordb(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]
         return None
 
     print(f"    Querying factordb.com for known factorization...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -817,9 +817,9 @@ def attack_factordb(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]
         return None
 
 
-def attack_roca(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_roca(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 9: ROCA Vulnerability Check (CVE-2017-15361)
+    Method 9: ROCA Vulnerability Check (CVE-2017-15361)
     
     The ROCA vulnerability affects RSA keys generated by Infineon's RSA library
     (used in TPMs, smart cards, YubiKeys). These keys have a special structure
@@ -830,7 +830,7 @@ def attack_roca(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     primes follows a specific pattern.
     """
     print("    Checking for ROCA/Infineon vulnerability (CVE-2017-15361)...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -871,9 +871,9 @@ def attack_roca(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
             print("    Estimated factoring time: hours to days on a single machine.")
             print()
             print("    To factor, use: https://github.com/crocs-muni/roca")
-            print("    Or run: sage -python roca/attack.py <modulus_hex>")
+            print("    Or run: sage -python roca/analyze.py <modulus_hex>")
 
-            # We cannot easily run the full Coppersmith attack here
+            # We cannot easily run the full Coppersmith method here
             # (requires SageMath), but detection is valuable
             timer.__exit__()
             return None  # Detected but not factored here
@@ -890,16 +890,16 @@ def attack_roca(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
         return None
 
 
-def attack_small_pq_diff(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_small_pq_diff(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 10: Small |p-q| Difference Check
+    Method 10: Small |p-q| Difference Check
     
     Extended version of Fermat: specifically checks if |p-q| < n^(1/4)
     which makes the key trivially breakable, or if |p-q| < 2*n^(1/3)
     which is still weak.
     """
     print("    Checking for dangerously close prime factors...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -963,11 +963,11 @@ def attack_small_pq_diff(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, 
         return None
 
 
-def attack_boneh_durfee(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_boneh_durfee(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 11: Boneh-Durfee Attack (Partial Key Exposure)
+    Method 11: Boneh-Durfee (Partial Key Exposure)
     
-    Extends Wiener's attack. If d < n^0.292, the key can be broken.
+    Extends Wiener's method. If d < n^0.292, the key can be broken.
     Uses lattice-based techniques (LLL algorithm).
     
     Note: Full implementation requires SageMath. Here we implement a
@@ -975,8 +975,8 @@ def attack_boneh_durfee(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, i
     """
     e = TARGET_EXPONENT
     print("    Checking for Boneh-Durfee vulnerability (d < n^0.292)...")
-    print("    Note: Full lattice attack requires SageMath")
-    timer = AttackTimeout(timeout)
+    print("    Note: Full lattice method requires SageMath")
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -1022,8 +1022,8 @@ def attack_boneh_durfee(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, i
                         timer.__exit__()
                         return (p, q)
 
-        print("    No Boneh-Durfee weakness detected (full lattice attack not available)")
-        print("    For full attack, use: https://github.com/mimoo/RSA-and-LLL-attacks")
+        print("    No Boneh-Durfee weakness detected (full lattice method not available)")
+        print("    For full method, use: https://github.com/mimoo/RSA-and-LLL-attacks")
         timer.__exit__()
         return None
 
@@ -1033,16 +1033,16 @@ def attack_boneh_durfee(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, i
         return None
 
 
-def attack_common_factor_batch(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
+def method_common_factor_batch(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, int]]:
     """
-    Attack 12: Common Factor / Batch GCD
+    Method 12: Common Factor / Batch GCD
     
     Generate random RSA-like numbers and check GCD with n.
     Also checks against values derived from the key itself
     (e.g., n-1, n+1, powers of small numbers).
     """
     print("    Checking for common factors with derived values...")
-    timer = AttackTimeout(timeout)
+    timer = AnalysisTimeout(timeout)
     timer.__enter__()
 
     try:
@@ -1106,79 +1106,79 @@ def attack_common_factor_batch(n: int, timeout: int, **kwargs) -> Optional[Tuple
 
 
 # ===========================================================================
-# Attack Registry
+# Method Registry
 # ===========================================================================
 
-ATTACKS: Dict[str, Dict[str, Any]] = {
+METHODS: Dict[str, Dict[str, Any]] = {
     "trial": {
         "name": "Trial Division",
-        "func": attack_trial_division,
+        "func": method_trial_division,
         "description": "Divide by first 1M primes",
         "order": 1,
     },
     "fermat": {
         "name": "Fermat Factorization",
-        "func": attack_fermat,
+        "func": method_fermat,
         "description": "Find close primes (n = a^2 - b^2)",
         "order": 2,
     },
     "p-1": {
         "name": "Pollard's p-1",
-        "func": attack_pollard_p1,
+        "func": method_pollard_p1,
         "description": "Exploit B-smooth p-1",
         "order": 3,
     },
     "rho": {
         "name": "Pollard's Rho (Brent)",
-        "func": attack_pollard_rho,
+        "func": method_pollard_rho,
         "description": "Probabilistic O(n^(1/4)) factoring",
         "order": 4,
     },
     "p+1": {
         "name": "Williams' p+1",
-        "func": attack_williams_p1,
+        "func": method_williams_p1,
         "description": "Exploit B-smooth p+1",
         "order": 5,
     },
     "wiener": {
-        "name": "Wiener's Attack",
-        "func": attack_wiener,
+        "name": "Wiener's Method",
+        "func": method_wiener,
         "description": "Small private exponent via continued fractions",
         "order": 6,
     },
     "gcd": {
         "name": "GCD Known Keys",
-        "func": attack_gcd_known_keys,
+        "func": method_gcd_known_keys,
         "description": "Check shared factors with known firmware keys",
         "order": 7,
     },
     "factordb": {
         "name": "FactorDB Lookup",
-        "func": attack_factordb,
+        "func": method_factordb,
         "description": "Query factordb.com for known factorization",
         "order": 8,
     },
     "roca": {
         "name": "ROCA Check (CVE-2017-15361)",
-        "func": attack_roca,
+        "func": method_roca,
         "description": "Infineon TPM vulnerability fingerprint",
         "order": 9,
     },
     "close-pq": {
         "name": "Small |p-q| Check",
-        "func": attack_small_pq_diff,
+        "func": method_small_pq_diff,
         "description": "Extended close-prime search",
         "order": 10,
     },
     "boneh-durfee": {
         "name": "Boneh-Durfee",
-        "func": attack_boneh_durfee,
-        "description": "Extended small-d attack (d < n^0.292)",
+        "func": method_boneh_durfee,
+        "description": "Extended small-d method (d < n^0.292)",
         "order": 11,
     },
     "batch-gcd": {
         "name": "Batch GCD / Common Factor",
-        "func": attack_common_factor_batch,
+        "func": method_common_factor_batch,
         "description": "GCD against derived values and random numbers",
         "order": 12,
     },
@@ -1189,13 +1189,13 @@ ATTACKS: Dict[str, Dict[str, Any]] = {
 # Main
 # ===========================================================================
 
-def run_attacks(
-    attacks_to_run: List[str],
+def run_methods(
+    methods_to_run: List[str],
     timeout: int,
     dry_run: bool = False,
     output_file: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run specified attacks and collect results."""
+    """Run specified methods and collect results."""
 
     n = TARGET_MODULUS
     results: Dict[str, Any] = {
@@ -1215,14 +1215,14 @@ def run_attacks(
             "python_version": sys.version,
             "timestamp": datetime.now().isoformat(),
         },
-        "attacks": {},
+        "methods": {},
         "factored": False,
         "private_key": None,
     }
 
     print()
     print("=" * 70)
-    print("  RSA-2048 FACTORING ATTACK TOOLKIT")
+    print("  RSA-2048 FACTORING ANALYSIS TOOLKIT")
     print("  Target: Ajazz AJ159 MCUboot Signing Key")
     print("=" * 70)
     print()
@@ -1231,18 +1231,18 @@ def run_attacks(
     print(f"  Exponent (e): {TARGET_EXPONENT}")
     print(f"  KEYHASH: {TARGET_KEYHASH}")
     print()
-    print(f"  Timeout per attack: {timeout}s")
-    print(f"  Attacks to run: {len(attacks_to_run)}")
+    print(f"  Timeout per method: {timeout}s")
+    print(f"  Methods to run: {len(methods_to_run)}")
     print(f"  gmpy2: {'YES (fast math)' if HAS_GMPY2 else 'NO (using Python math)'}")
     print(f"  sympy: {'YES' if HAS_SYMPY else 'NO (limited prime gen)'}")
     print(f"  requests: {'YES' if HAS_REQUESTS else 'NO (skip FactorDB)'}")
     print()
 
     if dry_run:
-        print("  [DRY RUN] Would execute these attacks:")
-        for attack_id in attacks_to_run:
-            info = ATTACKS[attack_id]
-            print(f"    {info['order']:2d}. [{attack_id:12s}] {info['name']}: {info['description']}")
+        print("  [DRY RUN] Would execute these methods:")
+        for method_id in methods_to_run:
+            info = METHODS[method_id]
+            print(f"    {info['order']:2d}. [{method_id:12s}] {info['name']}: {info['description']}")
         return results
 
     print("-" * 70)
@@ -1250,10 +1250,10 @@ def run_attacks(
     factored = False
     p_found, q_found = None, None
 
-    for attack_id in attacks_to_run:
-        info = ATTACKS[attack_id]
+    for method_id in methods_to_run:
+        info = METHODS[method_id]
         print()
-        print(f"  [{info['order']:2d}/{len(attacks_to_run)}] {info['name']}")
+        print(f"  [{info['order']:2d}/{len(methods_to_run)}] {info['name']}")
         print(f"  {'='*60}")
         print(f"  {info['description']}")
         print()
@@ -1266,7 +1266,7 @@ def run_attacks(
             if result is not None:
                 p_found, q_found = result
                 factored = True
-                results["attacks"][attack_id] = {
+                results["methods"][method_id] = {
                     "status": "SUCCESS",
                     "elapsed": elapsed,
                     "elapsed_formatted": format_time(elapsed),
@@ -1282,7 +1282,7 @@ def run_attacks(
                 print(f"  Time: {format_time(elapsed)}")
                 break
             else:
-                results["attacks"][attack_id] = {
+                results["methods"][method_id] = {
                     "status": "FAILED",
                     "elapsed": elapsed,
                     "elapsed_formatted": format_time(elapsed),
@@ -1291,7 +1291,7 @@ def run_attacks(
 
         except Exception as ex:
             elapsed = time.time() - start_time
-            results["attacks"][attack_id] = {
+            results["methods"][method_id] = {
                 "status": "ERROR",
                 "elapsed": elapsed,
                 "elapsed_formatted": format_time(elapsed),
@@ -1353,31 +1353,31 @@ def run_attacks(
         print()
         print("  [-] KEY NOT FACTORED")
         print()
-        print("  The RSA-2048 key resisted all automated attacks.")
+        print("  The RSA-2048 key resisted all automated analysis methods.")
         print("  This is expected for a properly generated 2048-bit key.")
         print()
         print("  Remaining options:")
-        print("    - Run ROCA attack with SageMath (if ROCA detected)")
+        print("    - Run ROCA analysis with SageMath (if ROCA detected)")
         print("    - Use CADO-NFS or msieve (months of compute time)")
-        print("    - Hardware side-channel attacks on the device")
+        print("    - Hardware side-channel analysis on the device")
         print("    - Find the private key in vendor tools/servers")
         print("    - Social engineering / vendor disclosure")
-        print("    - Look for debug/DFU backdoors that bypass signature check")
+        print("    - Look for debug/DFU backdoors that circumvent signature check")
 
-    # Attack summary table
+    # Method summary table
     print()
-    print("  Attack Results Summary:")
+    print("  Method Results Summary:")
     print("  " + "-" * 50)
-    for attack_id in attacks_to_run:
-        if attack_id in results["attacks"]:
-            r = results["attacks"][attack_id]
+    for method_id in methods_to_run:
+        if method_id in results["methods"]:
+            r = results["methods"][method_id]
             status_icon = {
                 "SUCCESS": "[+]",
                 "FAILED": "[-]",
                 "ERROR": "[!]",
             }.get(r["status"], "[?]")
             print(
-                f"    {status_icon} {ATTACKS[attack_id]['name']:25s} "
+                f"    {status_icon} {METHODS[method_id]['name']:25s} "
                 f"{r['status']:8s} ({r['elapsed_formatted']})"
             )
     print()
@@ -1390,7 +1390,7 @@ def run_attacks(
         print(f"  Results saved to: {output_path}")
     else:
         # Default output
-        default_output = Path("debug_toolkit/rsa_attack_results.json")
+        default_output = Path("debug_toolkit/rsa_analysis_results.json")
         default_output.parent.mkdir(parents=True, exist_ok=True)
         default_output.write_text(json.dumps(results, indent=2, default=str))
         print(f"  Results saved to: {default_output}")
@@ -1401,16 +1401,16 @@ def run_attacks(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="RSA-2048 Factoring Attack Toolkit for Ajazz AJ159 MCUboot Key",
+        description="RSA-2048 Factoring Analysis Toolkit for Ajazz AJ159 MCUboot Key",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Attack IDs:
+Method IDs:
   trial       Trial division (first 1M primes)
   fermat      Fermat factorization (close primes)
   p-1         Pollard's p-1 (smooth p-1)
   rho         Pollard's rho / Brent variant
   p+1         Williams' p+1 (smooth p+1)
-  wiener      Wiener's attack (small d)
+  wiener      Wiener's method (small d)
   gcd         GCD against known firmware keys
   factordb    FactorDB.com API lookup
   roca        ROCA vulnerability check (CVE-2017-15361)
@@ -1419,21 +1419,21 @@ Attack IDs:
   batch-gcd   Batch GCD / common factors
 
 Examples:
-  %(prog)s                          Run all attacks (default 300s timeout)
-  %(prog)s --timeout 600            10 minute timeout per attack
-  %(prog)s --attacks rho,fermat     Run only specific attacks
-  %(prog)s --attacks factordb       Quick online check only
-  %(prog)s --dry-run                Show attack plan without executing
+  %(prog)s                          Run all methods (default 300s timeout)
+  %(prog)s --timeout 600            10 minute timeout per method
+  %(prog)s --methods rho,fermat     Run only specific methods
+  %(prog)s --methods factordb       Quick online check only
+  %(prog)s --dry-run                Show method plan without executing
   %(prog)s --output results.json    Custom output file
         """
     )
     parser.add_argument(
         '--timeout', type=int, default=300,
-        help='Timeout in seconds per attack (default: 300)'
+        help='Timeout in seconds per method (default: 300)'
     )
     parser.add_argument(
-        '--attacks', type=str, default=None,
-        help='Comma-separated list of attack IDs to run (default: all)'
+        '--methods', type=str, default=None,
+        help='Comma-separated list of method IDs to run (default: all)'
     )
     parser.add_argument(
         '--dry-run', action='store_true',
@@ -1441,41 +1441,41 @@ Examples:
     )
     parser.add_argument(
         '--output', '-o', type=str, default=None,
-        help='Output JSON file path (default: debug_toolkit/rsa_attack_results.json)'
+        help='Output JSON file path (default: debug_toolkit/rsa_analysis_results.json)'
     )
     parser.add_argument(
-        '--list-attacks', action='store_true',
-        help='List all available attacks and exit'
+        '--list-methods', action='store_true',
+        help='List all available methods and exit'
     )
 
     args = parser.parse_args()
 
-    # List attacks mode
-    if args.list_attacks:
-        print("\nAvailable attacks:")
+    # List methods mode
+    if args.list_methods:
+        print("\nAvailable methods:")
         print("-" * 60)
-        for attack_id, info in sorted(ATTACKS.items(), key=lambda x: x[1]["order"]):
-            print(f"  {info['order']:2d}. [{attack_id:12s}] {info['name']}")
+        for method_id, info in sorted(METHODS.items(), key=lambda x: x[1]["order"]):
+            print(f"  {info['order']:2d}. [{method_id:12s}] {info['name']}")
             print(f"      {info['description']}")
         print()
         sys.exit(0)
 
-    # Determine which attacks to run
-    if args.attacks:
-        attack_ids = [a.strip() for a in args.attacks.split(',')]
+    # Determine which methods to run
+    if args.methods:
+        method_ids = [a.strip() for a in args.methods.split(',')]
         # Validate
-        for aid in attack_ids:
-            if aid not in ATTACKS:
-                print(f"ERROR: Unknown attack '{aid}'")
-                print(f"  Available: {', '.join(sorted(ATTACKS.keys()))}")
+        for aid in method_ids:
+            if aid not in METHODS:
+                print(f"ERROR: Unknown method '{aid}'")
+                print(f"  Available: {', '.join(sorted(METHODS.keys()))}")
                 sys.exit(1)
     else:
-        # All attacks in order
-        attack_ids = sorted(ATTACKS.keys(), key=lambda x: ATTACKS[x]["order"])
+        # All methods in order
+        method_ids = sorted(METHODS.keys(), key=lambda x: METHODS[x]["order"])
 
     # Run
-    run_attacks(
-        attacks_to_run=attack_ids,
+    run_methods(
+        methods_to_run=method_ids,
         timeout=args.timeout,
         dry_run=args.dry_run,
         output_file=args.output,

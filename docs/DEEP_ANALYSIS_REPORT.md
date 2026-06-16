@@ -656,7 +656,7 @@ Mitigation factors:
 - No direct memcpy calls found in first 100 instructions of handler
 - Buffer copies may happen in sub-functions called via BL
 
-## Section 10: Attack Surface Summary
+## Section 10: Interface Analysis Summary
 
 ### Input Vectors
 
@@ -680,9 +680,9 @@ Mitigation factors:
 The application firmware trusts USB HID reports from the host.
 There is minimal input validation beyond the report ID bounds check.
 
-### Potential Exploitation Vectors
+### Potential Test Vectors
 
-| # | Vector | Risk | Exploitability | Details |
+| # | Vector | Risk | Viability | Details |
 |---|--------|------|----------------|---------|
 | 1 | Stack buffer overflow in SET_REPORT | HIGH | Medium-High | 60-byte stack buffer with 64-byte input. No stack canaries, no ASLR, no XN. |
 | 2 | Unvalidated report ID dispatch | MEDIUM | Medium | Report IDs 0x13-0x18 may have less-tested code paths |
@@ -691,15 +691,15 @@ There is minimal input validation beyond the report ID bounds check.
 | 5 | memcpy with user-controlled length | HIGH | Medium | If any sub-handler passes user data length to memcpy |
 | 6 | Integer overflow in size calculations | MEDIUM | Low | Would need specific size field parsing bugs |
 
-### Exploitation Requirements
+### Testing Requirements
 
 For stack buffer overflow (Vector #1):
 
 1. **Trigger**: Send HID Feature Report with crafted payload
 2. **Control**: Need to reach a code path that copies > 60 bytes to stack
 3. **Payload**: Return address overwrite -> jump to code cave or shellcode
-4. **Bypass**: MCUboot signature check prevents persistent modification
-   unless exploit can write to flash (but no NVMC references found!)
+4. **Workaround**: MCUboot signature check prevents persistent modification
+   unless code execution can write to flash (but no NVMC references found!)
 
 ### Key Security Observations
 

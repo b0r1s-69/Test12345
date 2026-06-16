@@ -3,9 +3,9 @@
 crash_analyzer.py - Crash Detection and Analysis for Ajazz AJ159 APEX Mouse
 =============================================================================
 
-Monitors the AJ159 mouse for crashes/resets caused by HID fuzzing, and
-provides analysis for exploit development. Can be used standalone or to
-replay crash-inducing payloads from the fuzzer log.
+Monitors the AJ159 mouse for crashes/resets caused by HID protocol testing, and
+provides analysis for vulnerability assessment. Can be used standalone or to
+replay crash-inducing payloads from the tester log.
 
 Crash types:
   - Soft crash: device resets via watchdog, re-enumerates as PID 0x4026
@@ -17,8 +17,8 @@ Analysis capabilities:
   - Records crash-inducing payload and context
   - Binary search to narrow down critical byte/bit
   - De Bruijn pattern offset identification for register analysis
-  - Distinguishes crash types for exploit categorization
-  - Generates exploit development reports
+  - Distinguishes crash types for analysis categorization
+  - Generates analysis reports
 
 Architecture context (ARM Cortex-M4F, nRF52840):
   - Little-endian, Thumb mode
@@ -41,9 +41,9 @@ PREREQUISITES:
 USAGE:
   python crash_analyzer.py --monitor                  # Continuous crash monitoring
   python crash_analyzer.py --payload "04400101..."    # Test specific payload (hex)
-  python crash_analyzer.py --replay-log fuzz.json     # Replay fuzzer crash log
+  python crash_analyzer.py --replay-log test.json     # Replay tester crash log
   python crash_analyzer.py --bisect "04400101..."     # Binary search crash byte
-  python crash_analyzer.py --report crash_report.json # Generate exploit report
+  python crash_analyzer.py --report crash_report.json # Generate analysis report
 """
 
 from __future__ import annotations
@@ -492,9 +492,9 @@ def analyze_crash_payload(payload: bytes) -> Dict[str, Any]:
     return analysis
 
 
-def generate_exploit_report(crashes: List[CrashEvent],
+def generate_analysis_report(crashes: List[CrashEvent],
                             bisect_results: Optional[Dict] = None) -> Dict[str, Any]:
-    """Generate a comprehensive report for exploit development."""
+    """Generate a comprehensive report for vulnerability analysis."""
     report = {
         'generated': datetime.now().isoformat(),
         'target': {
@@ -521,7 +521,7 @@ def generate_exploit_report(crashes: List[CrashEvent],
             'hang': sum(1 for c in crashes if c.crash_type == 'hang'),
         },
         'bisection': bisect_results,
-        'exploitation_notes': {
+        'analysis_notes': {
             'stack_executable': True,
             'shellcode_max_size': 'Limited by report size (64 bytes) or multi-stage',
             'useful_gadgets': [
@@ -546,19 +546,19 @@ def generate_exploit_report(crashes: List[CrashEvent],
     if crashes:
         hard_crashes = [c for c in crashes if c.crash_type == 'hard']
         if hard_crashes:
-            report['exploitation_notes']['verdict'] = (
+            report['analysis_notes']['verdict'] = (
                 'EXPLOITABLE - device enters boot mode on crash, indicating '
                 'control flow corruption. Next: identify exact register '
                 'overwritten and craft shellcode.'
             )
         else:
-            report['exploitation_notes']['verdict'] = (
+            report['analysis_notes']['verdict'] = (
                 'POTENTIALLY EXPLOITABLE - crashes detected but device '
                 'recovers to normal mode. May need more precise payload '
                 'to achieve code execution vs simple fault.'
             )
     else:
-        report['exploitation_notes']['verdict'] = (
+        report['analysis_notes']['verdict'] = (
             'NOT YET CONFIRMED - no crashes observed. Try different '
             'report IDs, payload structures, or timing variations.'
         )
@@ -728,7 +728,7 @@ def cmd_test_payload(args, hid_module):
 
 
 def cmd_replay_log(args, hid_module):
-    """Replay payloads from a fuzzer JSON log file."""
+    """Replay payloads from a tester JSON log file."""
     try:
         with open(args.replay_log, 'r') as f:
             log_data = json.load(f)
@@ -828,14 +828,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Modes of operation:
-  --monitor       Continuously poll device for crashes (use with fuzzer)
+  --monitor       Continuously poll device for crashes (use with protocol tester)
   --payload HEX   Test a specific payload for crash
-  --replay-log F  Replay crash payloads from fuzzer JSON log
+  --replay-log F  Replay crash payloads from tester JSON log
   --bisect        Binary search for critical byte (use with --payload)
 
 Crash types:
   soft  - Device resets to normal mode (watchdog reset)
-  hard  - Device enters boot mode (severe fault, exploitable!)
+  hard  - Device enters boot mode (severe fault, significant!)
   hang  - Device stops responding, no re-enumeration
 
 SAFETY: MCUboot swap design means device ALWAYS recovers.
@@ -845,7 +845,7 @@ Examples:
   %(prog)s --monitor                             # Watch for crashes
   %(prog)s --payload "13400101AABBCCDD..."       # Test hex payload
   %(prog)s --payload "13400101" --bisect         # Find critical byte
-  %(prog)s --replay-log fuzz_log.json            # Replay fuzzer output
+  %(prog)s --replay-log test_log.json            # Replay tester output
   %(prog)s --report crash_report.json            # Save analysis report
         """
     )
@@ -861,7 +861,7 @@ Examples:
     )
     mode.add_argument(
         '--replay-log', type=str,
-        help='Replay crash payloads from fuzzer JSON log file'
+        help='Replay crash payloads from tester JSON log file'
     )
 
     parser.add_argument(
@@ -878,7 +878,7 @@ Examples:
     )
     parser.add_argument(
         '--report', type=str, default=None,
-        help='Save exploit analysis report to JSON file'
+        help='Save analysis report to JSON file'
     )
     parser.add_argument(
         '-v', '--verbose', action='store_true',
@@ -927,7 +927,7 @@ Examples:
 
     # Generate report if requested
     if args.report and crashes:
-        report = generate_exploit_report(crashes)
+        report = generate_analysis_report(crashes)
         with open(args.report, 'w') as f:
             json.dump(report, f, indent=2)
         print(f"\n  [*] Exploit report saved to: {args.report}")
@@ -959,7 +959,7 @@ Examples:
 
         if hard > 0:
             print(f"\n  [!!!] HARD CRASHES DETECTED - device enters boot mode!")
-            print(f"        This strongly suggests exploitable control flow corruption.")
+            print(f"        This strongly suggests control flow corruption.")
             print(f"        Next: use --bisect to find exact overflow offset,")
             print(f"        then craft shellcode for code execution.")
     else:

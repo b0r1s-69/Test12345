@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-full_pentest.py - Comprehensive Firmware Update Vector Pentesting for Ajazz AJ159 APEX
-========================================================================================
+full_diagnostic.py - Comprehensive Firmware Update Vector Diagnostics for Ajazz AJ159 APEX
+============================================================================================
 
 Probes EVERY possible update vector on the AJ159 APEX gaming mouse to find alternative
 paths past the MCUboot RSA-2048 signature verification. This is the definitive test to
@@ -50,12 +50,12 @@ PREREQUISITES:
   - Linux: run as root or configure udev rules (99-aj159.rules)
 
 USAGE:
-  python full_pentest.py                         # Run all phases
-  python full_pentest.py --phase 1               # Run only phase 1
-  python full_pentest.py --phase 2 3             # Run phases 2 and 3
-  python full_pentest.py --quick                 # Fast scan (reduced sweep)
-  python full_pentest.py --output results.json   # Save results to JSON
-  python full_pentest.py --allow-writes          # Enable write probes (careful!)
+  python full_diagnostic.py                         # Run all phases
+  python full_diagnostic.py --phase 1               # Run only phase 1
+  python full_diagnostic.py --phase 2 3             # Run phases 2 and 3
+  python full_diagnostic.py --quick                 # Fast scan (reduced sweep)
+  python full_diagnostic.py --output results.json   # Save results to JSON
+  python full_diagnostic.py --allow-writes          # Enable write probes (careful!)
 """
 
 from __future__ import annotations
@@ -406,7 +406,7 @@ class DeviceManager:
 # ===========================================================================
 
 class Results:
-    """Collects and organizes pentest findings."""
+    """Collects and organizes diagnostic findings."""
 
     def __init__(self):
         self.start_time = timestamp()
@@ -458,8 +458,8 @@ class Results:
     def to_dict(self) -> Dict:
         """Export results as dictionary."""
         return {
-            'pentest_report': {
-                'tool': 'full_pentest.py',
+            'diagnostic_report': {
+                'tool': 'full_diagnostic.py',
                 'target': 'Ajazz AJ159 APEX',
                 'start_time': self.start_time,
                 'end_time': timestamp(),
@@ -475,8 +475,8 @@ class Results:
         high_findings = [h for h in self.highlights if '[HIGH]' in h or '[CRITICAL]' in h]
         if high_findings:
             return (f"Found {len(high_findings)} high/critical finding(s) that may indicate "
-                    f"exploitable update vectors. Review highlights for details.")
-        return ("No exploitable update vectors discovered. The MCUboot RSA-2048 signature "
+                    f"viable update vectors. Review highlights for details.")
+        return ("No viable update vectors discovered. The MCUboot RSA-2048 signature "
                 "verification appears to be the sole gate for firmware updates. "
                 "Alternative paths (SMP, Nordic DFU, vendor commands) were not responsive.")
 
@@ -1205,7 +1205,7 @@ def phase5_mcumgr_smp(dm: DeviceManager, results: Results, quick: bool = False):
     print(f"\n[5.1] Testing raw SMP frames (no transport wrapper)...")
     raw_smp_tests = [
         ('OS Echo (write)', MGMT_OP_WRITE, MGMT_GROUP_OS, MGMT_ID_ECHO,
-         build_cbor_map({"d": "pentest"})),
+         build_cbor_map({"d": "diagnostic"})),
         ('OS Echo (read)', MGMT_OP_READ, MGMT_GROUP_OS, MGMT_ID_ECHO, b''),
         ('OS Reset', MGMT_OP_WRITE, MGMT_GROUP_OS, MGMT_ID_RESET,
          build_cbor_map({})),
@@ -1356,7 +1356,7 @@ def phase6_report(results: Results, output_path: str):
 
     # Print summary
     print(f"\n{'='*70}")
-    print("  PENTEST SUMMARY")
+    print("  DIAGNOSTIC SUMMARY")
     print(f"{'='*70}")
     print(f"\n  Phases executed: {len(results.phases) - 1}")  # -1 for phase 6 itself
 
@@ -1408,7 +1408,7 @@ def phase6_report(results: Results, output_path: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Ajazz AJ159 APEX - Comprehensive Firmware Update Vector Pentest",
+        description="Ajazz AJ159 APEX - Comprehensive Firmware Update Vector Diagnostic",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 PHASES:
@@ -1425,7 +1425,7 @@ EXAMPLES:
   %(prog)s --phase 1 2              Phases 1 and 2
   %(prog)s --phase 3 5              Boot probe + SMP test
   %(prog)s --quick                  Fast scan (reduced ranges)
-  %(prog)s --output pentest.json    Save detailed results
+  %(prog)s --output diagnostic.json    Save detailed results
   %(prog)s --quick --output r.json  Quick scan with JSON output
 
 SAFETY:
@@ -1480,7 +1480,7 @@ NOTE:
     # Banner
     print()
     print("=" * 70)
-    print("  AJAZZ AJ159 APEX - COMPREHENSIVE FIRMWARE UPDATE VECTOR PENTEST")
+    print("  AJAZZ AJ159 APEX - COMPREHENSIVE FIRMWARE UPDATE VECTOR DIAGNOSTIC")
     print("=" * 70)
     print(f"  Target:  VID 0x3151, PID 0x4026 (normal) / 0x4025 (boot)")
     print(f"  Phases:  {phases_to_run}")
@@ -1546,12 +1546,12 @@ NOTE:
 
     # Final status
     print(f"\n{'='*70}")
-    print(f"  PENTEST COMPLETE")
+    print(f"  DIAGNOSTIC COMPLETE")
     print(f"  Finished: {timestamp()}")
     if results.highlights:
         print(f"  ** {len(results.highlights)} HIGH/CRITICAL FINDING(S) - REVIEW ABOVE **")
     else:
-        print(f"  No exploitable vectors found.")
+        print(f"  No viable vectors found.")
     print(f"{'='*70}\n")
 
     return 0
