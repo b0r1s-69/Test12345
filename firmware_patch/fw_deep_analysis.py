@@ -1078,7 +1078,7 @@ def section_9_stack_overflow(data):
     return "\n".join(lines)
 
 
-def section_10_attack_surface(data):
+def section_10_interface_analysis(data):
     """Section 10 - Interface Analysis Summary"""
     lines = []
     lines.append("## Section 10: Interface Analysis Summary\n")
@@ -1174,8 +1174,8 @@ def section_11_peripherals(data):
         lines.append("")
         lines.append("1. The application cannot write to flash directly")
         lines.append("2. All flash operations are delegated to the bootloader (MCUboot)")
-        lines.append("3. Even with arbitrary code execution in the application, an attacker")
-        lines.append("   cannot directly patch the firmware in flash")
+        lines.append("3. Even with arbitrary code execution in the application, it would not")
+        lines.append("   be possible to directly patch the firmware in flash")
         lines.append("4. To achieve persistent modification, would need to:")
         lines.append("   a. Chain into the bootloader (which DOES have NVMC access)")
         lines.append("   b. Or use DFU protocol to upload a crafted image (still needs valid signature)")
@@ -1391,7 +1391,7 @@ def main():
     report_sections.append(section_9_stack_overflow(data))
 
     print("[*] Section 10: Interface Analysis...")
-    report_sections.append(section_10_attack_surface(data))
+    report_sections.append(section_10_interface_analysis(data))
 
     print("[*] Section 11: Peripheral References...")
     report_sections.append(section_11_peripherals(data))

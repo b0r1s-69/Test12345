@@ -745,8 +745,8 @@ application firmware. This means:
 
 1. The application cannot write to flash directly
 2. All flash operations are delegated to the bootloader (MCUboot)
-3. Even with arbitrary code execution in the application, an attacker
-   cannot directly patch the firmware in flash
+3. Even with arbitrary code execution in the application, it would not
+   be possible to directly patch the firmware in flash
 4. To achieve persistent modification, would need to:
    a. Chain into the bootloader (which DOES have NVMC access)
    b. Or use DFU protocol to upload a crafted image (still needs valid signature)
