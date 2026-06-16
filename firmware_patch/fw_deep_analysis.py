@@ -8,7 +8,7 @@ Performs:
   - MCUboot header/structure analysis
   - Complete function enumeration
   - SET_REPORT handler disassembly and call graph
-  - Buffer overflow / attack surface analysis
+  - Buffer overflow / interface analysis
   - Peripheral reference mapping
   - Patch comparison
 
@@ -1127,7 +1127,7 @@ def section_10_attack_surface(data):
     lines.append("2. **Control**: Need to reach a code path that copies > 60 bytes to stack")
     lines.append("3. **Payload**: Return address overwrite -> jump to code cave or shellcode")
     lines.append("4. **Bypass**: MCUboot signature check prevents persistent modification")
-    lines.append("   unless exploit can write to flash (but no NVMC references found!)")
+    lines.append("   unless code execution can write to flash (but no NVMC references found!)")
     lines.append("")
     lines.append("### Key Security Observations")
     lines.append("")

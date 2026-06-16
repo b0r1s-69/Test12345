@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-boot_bruteforce.py - Bootloader Command Brute-Force for Ajazz AJ159 APEX Mouse
-================================================================================
+boot_scan.py - Bootloader Command Scanner for Ajazz AJ159 APEX Mouse
+======================================================================
 
 Sends all 256 possible BA XX command IDs to the mouse in boot mode and logs
 all responses. This helps discover undocumented bootloader commands that might
-bypass MCUboot RSA-2048 signature verification.
+provide alternative paths past MCUboot RSA-2048 signature verification.
 
 Known commands:
   BA FF - Get boot ID (byte[7]=0x46 selects mode, response has device ID 0x06DB)
@@ -20,10 +20,10 @@ PREREQUISITES:
   - Linux: run as root or configure udev rules
 
 USAGE:
-  python boot_bruteforce.py                  # Brute-force all command IDs
-  python boot_bruteforce.py --sweep-baff     # Also sweep BA FF mode bytes
-  python boot_bruteforce.py --timeout 100    # Custom read timeout (ms)
-  python boot_bruteforce.py --skip-known     # Skip BA C0 and BA C2 (default)
+  python boot_scan.py                  # Scan all command IDs
+  python boot_scan.py --sweep-baff     # Also sweep BA FF mode bytes
+  python boot_scan.py --timeout 100    # Custom read timeout (ms)
+  python boot_scan.py --skip-known     # Skip BA C0 and BA C2 (default)
 """
 
 from __future__ import annotations
@@ -157,12 +157,12 @@ def read_response(device, timeout_ms: int = 200) -> Optional[bytes]:
 # Brute-Force Logic
 # ===========================================================================
 
-def bruteforce_commands(device, timeout_ms: int, skip_known: bool, verbose: bool):
+def scan_commands(device, timeout_ms: int, skip_known: bool, verbose: bool):
     """
     Send BA XX for all 256 possible command IDs and log responses.
     """
     print(f"\n{'='*70}")
-    print(f"  BOOTLOADER COMMAND BRUTE-FORCE")
+    print(f"  BOOTLOADER COMMAND SCAN")
     print(f"  Sending BA XX for XX = 0x00..0xFF")
     if skip_known:
         print(f"  Skipping: BA C0, BA C2 (require parameters)")
@@ -319,11 +319,11 @@ def sweep_baff_mode_byte(device, timeout_ms: int, verbose: bool):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AJ159 Bootloader Command Brute-Force Tool",
+        description="AJ159 Bootloader Command Scanner Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                          Brute-force all BA XX commands
+  %(prog)s                          Scan all BA XX commands
   %(prog)s --sweep-baff             Also sweep BA FF mode byte
   %(prog)s --timeout 200            Use 200ms read timeout
   %(prog)s --no-skip                Don't skip BA C0/BA C2 (risky!)
@@ -356,7 +356,7 @@ Known boot commands:
 
     print()
     print("=" * 70)
-    print("  AJ159 APEX - Bootloader Command Brute-Force")
+    print("  AJ159 APEX - Bootloader Command Scanner")
     print("  Target: VID 0x3151, PID 0x4025 (boot mode)")
     print("  Protocol: HID Feature Reports, 64 bytes, no report ID")
     print("=" * 70)
@@ -365,8 +365,8 @@ Known boot commands:
     device = open_boot_device(hid)
 
     try:
-        # Phase 1: Brute-force all BA XX commands
-        results = bruteforce_commands(
+        # Phase 1: Scan all BA XX commands
+        results = scan_commands(
             device,
             timeout_ms=args.timeout,
             skip_known=not args.no_skip,

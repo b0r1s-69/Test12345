@@ -699,7 +699,7 @@ For stack buffer overflow (Vector #1):
 2. **Control**: Need to reach a code path that copies > 60 bytes to stack
 3. **Payload**: Return address overwrite -> jump to code cave or shellcode
 4. **Bypass**: MCUboot signature check prevents persistent modification
-   unless exploit can write to flash (but no NVMC references found!)
+   unless code execution can write to flash (but no NVMC references found!)
 
 ### Key Security Observations
 

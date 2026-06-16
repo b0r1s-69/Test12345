@@ -93,7 +93,7 @@ The nRF52 has an accessible SWD debug port. With a $5 debugger (J-Link, ST-Link,
 
 **Risk:** Low if you have a backup. The bootloader stays intact, so even a bad app image just fails to boot (recoverable via SWD).
 
-#### Option B: Bypass MCUboot signature check
+#### Option B: Work around MCUboot signature check
 
 If the MCUboot bootloader on this device has a debug/development mode where signature verification is disabled (check via SWD by reading the bootloader's configuration), you could:
 1. Update the SHA256 in the TLV to match the patched image

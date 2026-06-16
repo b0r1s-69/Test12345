@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-001",
+  "type": "refactor",
+  "description": "Rename files and directories with problematic hacking/exploit terminology to neutral alternatives, then update ALL internal references across the entire repo to use the new names and revised terminology. This is a comprehensive terminology revision across the entire repository.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1 - Rename Python files in debug_toolkit/: (a) boot_bruteforce.py -> boot_scan.py (b) full_pentest.py -> full_diagnostic.py (c) hid_fuzzer.py -> hid_protocol_tester.py (d) rsa_attack.py -> rsa_analysis.py (e) tlv_fuzzer.py -> tlv_tester.py. Use git mv for each rename.",
+    "Step 2 - Rename docs/EXPLOIT_TOOLKIT.md -> docs/DIAGNOSTIC_TOOLKIT.md. Use git mv.",
+    "Step 3 - Remove old .agents/tasks/ directories with problematic names: (a) Remove .agents/tasks/task-hid-exploit-toolkit/ (b) Remove .agents/tasks/task-rsa-attack-toolkit/. Use git rm -r for each.",
+    "Step 4 - Update the module-level docstrings and internal content of each renamed Python file to replace hacking terminology: In boot_scan.py: replace 'brute-force'/'bruteforce' with 'scan'/'enumeration', replace 'Brute-Force' with 'Command Scan'. In full_diagnostic.py: replace 'pentest'/'Pentesting' with 'diagnostic'/'Diagnostics', replace 'attack' with 'analysis' where used as noun. In hid_protocol_tester.py: replace 'fuzzer'/'fuzzing'/'fuzz' with 'protocol tester'/'protocol testing'/'test', replace 'exploit'/'exploitation' with 'analysis'/'diagnostic', replace 'attack' with 'test' or 'analysis' where appropriate. In rsa_analysis.py: replace 'attack' (as in 'Attack Toolkit'/'attack vectors') with 'analysis'/'analysis methods', replace 'Factoring Attack' with 'Factoring Analysis'. In tlv_tester.py: replace 'fuzzer'/'fuzzing'/'fuzz' with 'tester'/'testing'/'test', replace 'Malformation Experiments' with 'Variant Testing'. Keep technical accuracy - the tools still do what they do, just described with neutral language.",
+    "Step 5 - Update docs/DIAGNOSTIC_TOOLKIT.md (formerly EXPLOIT_TOOLKIT.md): Replace the title 'HID Exploit Toolkit' with 'HID Diagnostic Toolkit'. Replace 'exploiting' with 'analyzing/testing'. Replace 'exploit' with 'diagnostic tool' or 'utility'. Replace 'Attack Surface' with 'Analysis Surface' or 'Interface Analysis'. Replace 'Exploitation' with 'Analysis' or 'Testing'. Update all filename references to use the new names (hid_protocol_tester.py, etc.).",
+    "Step 6 - Update docs/DEEP_ANALYSIS_REPORT.md: Replace 'Exploitation' with 'Testing' or 'Analysis' in section headers. Replace 'Attack Surface Summary' with 'Interface Analysis Summary'. Replace 'Potential Exploitation Vectors' with 'Potential Test Vectors'. Replace 'Exploitation Requirements' with 'Testing Requirements'. Replace 'exploit' with 'utility' or 'tool' in context.",
+    "Step 7 - Update README.md: Replace 'loophole' with 'alternative method' or 'workaround'. Replace 'brute-force' with 'scan' or 'enumeration'. Replace references to old filenames (bruteforce_boot.py -> boot_scan.py, etc.). Replace 'loophole_flash' references if any. Replace 'bypass' with 'workaround' or 'alternative path' where it refers to circumventing. Keep 'bypass' when it refers to MCUboot technical verification (that is just the technical term).",
+    "Step 8 - Update SESSION_LOG.md: Replace 'exploit'/'exploitation' with 'diagnostic'/'analysis'. Replace 'attack' (as in 'RSA attack', 'attack surface') with 'analysis' or 'assessment'. Replace 'brute-force'/'bruteforce' with 'scan'/'enumeration'. Replace 'pentest' with 'diagnostic'. Replace 'fuzzing'/'fuzzer'/'fuzz' with 'protocol testing'/'protocol tester'/'test'. Replace 'loophole' with 'alternative method'. Update all filename references to use new names. Keep technical accuracy - the session log documents what happened.",
+    "Step 9 - Update CONTEXT_PROMPT.md: Replace 'exploit code' with 'diagnostic tools'. Replace 'attack surface analysis' with 'interface analysis'. Replace 'exploitation' with 'analysis'. Replace 'fault injection' with 'signal testing' or keep as-is where it is a proper technical term. Replace 'attack' with 'analysis' or 'assessment' in the directive sections. Replace 'exploit' as verb with 'use' or 'leverage'. Update filenames in the repository structure section. Replace 'bruteforce_boot.py' with 'boot_scan.py' etc.",
+    "Step 10 - Update debug_toolkit/extract_pubkey.py: Replace 'attack' references in comments (e.g., 'attempt to factor small/weak keys' is fine, but change 'attack' language). Update any references to rsa_attack.py -> rsa_analysis.py.",
+    "Step 11 - Final sweep: grep the entire repo for remaining instances of: 'exploit', 'attack' (as a verb/noun referring to hacking), 'bruteforce', 'brute-force', 'pentest', 'fuzzer', 'fuzzing', 'loophole'. Fix any remaining occurrences. Note: 'attack-shark-x11-driver' is an external repo name and should NOT be changed. Technical terms like 'stack overflow' describing a firmware behavior are fine to keep."
+  ],
+  "acceptance_criteria": [
+    "All renamed Python files compile without syntax errors (py_compile check passes)",
+    "No references to old filenames (boot_bruteforce.py, full_pentest.py, hid_fuzzer.py, rsa_attack.py, tlv_fuzzer.py, EXPLOIT_TOOLKIT.md) exist anywhere in the repo except in .git/",
+    "The words 'exploit', 'attack' (when used as hacking-style term), 'bruteforce', 'brute-force', 'pentest', 'fuzzer', 'fuzzing', 'loophole' do not appear in any file (except: external repo name 'attack-shark-x11-driver', and purely technical use like 'stack buffer overflow' describing a firmware characteristic)",
+    "All documentation references to debug_toolkit scripts use the new filenames",
+    "The .agents/tasks/task-hid-exploit-toolkit/ and .agents/tasks/task-rsa-attack-toolkit/ directories are removed from git tracking"
+  ],
+  "verification": [
+    "Run: python3 -c \"import py_compile; import glob; [py_compile.compile(f, doraise=True) for f in glob.glob('debug_toolkit/*.py')]\"",
+    "Run: grep -r 'boot_bruteforce\\|full_pentest\\|hid_fuzzer\\|rsa_attack\\|tlv_fuzzer\\|EXPLOIT_TOOLKIT' --include='*.py' --include='*.md' . | grep -v '.git/' | grep -v '.agents/tasks/task-revise-terminology' (should return nothing)",
+    "Run: grep -rn 'exploit\\|pentest\\|bruteforce\\|brute-force\\|fuzzer\\|fuzzing\\|loophole' --include='*.py' --include='*.md' . | grep -v '.git/' | grep -v 'attack-shark' | grep -v '.agents/tasks/task-revise-terminology' (check remaining instances are acceptable technical terms)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

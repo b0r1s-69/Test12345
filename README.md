@@ -11,7 +11,7 @@ When you assign an onboard macro to LMB and hold RMB (e.g., aiming in a game), p
 | Approach | Status |
 |----------|--------|
 | Firmware binary patch (27 bytes) | **READY** - patch built, cannot flash due to RSA |
-| Flash via NORDICKEYBOARD loophole | **IN PROGRESS** - method discovered, needs EXE patching |
+| Flash via NORDICKEYBOARD workaround | **IN PROGRESS** - method discovered, needs EXE patching |
 | Bug report to Ajazz | **READY** - full technical details for their firmware team |
 
 ## Continuing This Project
@@ -51,7 +51,7 @@ Total: 27 bytes changed out of 108,608. See [`docs/PATCH_README.md`](docs/PATCH_
 CONTEXT_PROMPT.md              # AI session prompt - paste to continue project
 SESSION_LOG.md                 # Living session state - updated every session
 
-firmware_patch/                # Binary firmware patch (needs RSA bypass to flash)
+firmware_patch/                # Binary firmware patch (needs RSA workaround to flash)
   mouse_app_fw.bin               Original application firmware
   mouse_app_fw_PATCHED.bin       Patched firmware with macro fix
   macro_button_fix.ips           IPS patch file
@@ -62,14 +62,14 @@ firmware_patch/                # Binary firmware patch (needs RSA bypass to flas
 debug_toolkit/                 # USB HID debug and flash tools
   aj159_debug.py                 Main debug tool (monitor/probe/set)
   flash_aj159.py                 Flash attempt script
-  bruteforce_boot.py             Boot mode brute-force
+  boot_scan.py                   Boot mode command scanner
   enter_boot.py                  Enter boot mode utility
   probe_deep.py                  Deep device probing
   scan_mouse.py                  Mouse scanner
   requirements.txt               Python dependencies (hidapi)
   99-aj159.rules                 Linux udev rules
 
-loophole_flash/                # NORDICKEYBOARD bypass research
+alternative_flash/             # NORDICKEYBOARD alternative path research
   ry_upgrade.exe                 Upgrade tool (with modified config)
   resources/support_config.json  Config with NORDICKEYBOARD for boot PID
   README.md                      Research notes and next steps
@@ -96,9 +96,9 @@ docs/                          # Technical documentation
 The mouse bootloader (MCUboot) enforces RSA-2048 signature verification. Our patched firmware has a valid SHA-256 hash but we do not have Ajazz's private signing key. Three approaches tried:
 1. Remove RSA from image TLV - bootloader rejects
 2. Update only SHA-256 - bootloader rejects (stale RSA)
-3. NORDICKEYBOARD method - bypasses MCUboot but tool says "does not require upgrade"
+3. NORDICKEYBOARD method - provides alternative path past MCUboot but tool says "does not require upgrade"
 
-The NORDICKEYBOARD loophole bypass is the current focus of research. See [`SESSION_LOG.md`](SESSION_LOG.md) for current status and next steps.
+The NORDICKEYBOARD workaround is the current focus of research. See [`SESSION_LOG.md`](SESSION_LOG.md) for current status and next steps.
 
 ## Safety
 

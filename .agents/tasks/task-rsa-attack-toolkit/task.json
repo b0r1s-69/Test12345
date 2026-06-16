@@ -1,7 +1,0 @@
-{
-  "task_id": "task-rsa-attack-toolkit",
-  "task_description": "Create comprehensive RSA-2048 attack toolkit to attempt factoring the MCUboot signing key and, if successful, sign the patched firmware for flashing.",
-  "status": "completed",
-  "feature_order": ["FEAT-001"],
-  "blocked_reason": null
-}

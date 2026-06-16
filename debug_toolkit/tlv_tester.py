@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-tlv_fuzzer.py - MCUboot TLV Malformation Experiments for Ajazz AJ159 APEX Mouse
-=================================================================================
+tlv_tester.py - MCUboot TLV Variant Testing for Ajazz AJ159 APEX Mouse
+========================================================================
 
 Builds malformed firmware images with different MCUboot TLV configurations to
 test edge cases in the bootloader's signature verification. The goal is to find
-a TLV configuration that bypasses RSA-2048 signature checking.
+a TLV configuration that provides an alternative path past RSA-2048 signature checking.
 
 MCUboot image structure:
   [Header: 512 bytes] [Code: 108608 bytes] [TLV: variable]
@@ -29,11 +29,11 @@ PREREQUISITES:
   - Mouse in boot mode (PID 0x4025) for flashing
 
 USAGE:
-  python tlv_fuzzer.py --dry-run                   # Build all variants, show info
-  python tlv_fuzzer.py --dry-run --variant 1       # Build specific variant only
-  python tlv_fuzzer.py --flash --variant 1         # Flash variant 1 to device
-  python tlv_fuzzer.py --flash --variant all       # Flash all variants (with prompts)
-  python tlv_fuzzer.py --save-dir ./output         # Save built images to directory
+  python tlv_tester.py --dry-run                   # Build all variants, show info
+  python tlv_tester.py --dry-run --variant 1       # Build specific variant only
+  python tlv_tester.py --flash --variant 1         # Flash variant 1 to device
+  python tlv_tester.py --flash --variant all       # Flash all variants (with prompts)
+  python tlv_tester.py --save-dir ./output         # Save built images to directory
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ def resolve_firmware_path(user_path: str) -> Path:
     print(f"       Also checked: {fallback}")
     print()
     print(f"  Use --fw-path to specify location:")
-    print(f"    python tlv_fuzzer.py --fw-path {FALLBACK_FW_FILENAME} "
+    print(f"    python tlv_tester.py --fw-path {FALLBACK_FW_FILENAME} "
           f"--exe-path {FALLBACK_EXE_FILENAME} --flash --variant all")
     sys.exit(1)
 
@@ -174,7 +174,7 @@ def resolve_exe_path(user_path: str) -> Path:
     print(f"       Also checked: {fallback}")
     print()
     print(f"  Use --exe-path to specify location:")
-    print(f"    python tlv_fuzzer.py --fw-path {FALLBACK_FW_FILENAME} "
+    print(f"    python tlv_tester.py --fw-path {FALLBACK_FW_FILENAME} "
           f"--exe-path {FALLBACK_EXE_FILENAME} --flash --variant all")
     sys.exit(1)
 
@@ -650,7 +650,7 @@ ALL_VARIANTS = [
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AJ159 MCUboot TLV Malformation Fuzzer",
+        description="AJ159 MCUboot TLV Variant Tester",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Variants:
@@ -704,8 +704,8 @@ Examples:
 
     print()
     print("=" * 70)
-    print("  AJ159 APEX - MCUboot TLV Malformation Fuzzer")
-    print("  Testing signature verification bypass via TLV manipulation")
+    print("  AJ159 APEX - MCUboot TLV Variant Tester")
+    print("  Testing signature verification via TLV manipulation")
     print("=" * 70)
 
     # Resolve paths (with fallback to script's own directory)
@@ -800,7 +800,7 @@ Examples:
                 if success:
                     print(f"    [!!!] SUCCESS: {msg}")
                     print(f"    [!!!] MCUboot ACCEPTED the image!")
-                    print(f"    [!!!] The signature check may be bypassed!")
+                    print(f"    [!!!] The signature check may have an alternative path!")
                 else:
                     print(f"    [---] REJECTED: {msg}")
             except Exception as e:
@@ -834,7 +834,7 @@ Examples:
         accepted = [r for r in results if r[2] is True]
         if accepted:
             print(f"\n  [!!!] {len(accepted)} variant(s) ACCEPTED by bootloader!")
-            print(f"        This may indicate a bypass of RSA signature verification.")
+            print(f"        This may indicate an alternative path around RSA signature verification.")
         else:
             print(f"\n  [-] All variants rejected. RSA verification appears enforced.")
 

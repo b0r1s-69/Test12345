@@ -12,7 +12,7 @@
 
 **Status:** Not attempted -- requires $5 ST-Link V2 clone
 
-**Concept:** Physical debug port access bypasses all software protections. If APPROTECT is not blown (or can be mass-erased), full read/write access to internal flash. This is now the ONLY viable technical path remaining.
+**Concept:** Physical debug port access circumvents all software protections. If APPROTECT is not blown (or can be mass-erased), full read/write access to internal flash. This is now the ONLY viable technical path remaining.
 
 **What's needed:**
 - ST-Link V2 clone (~$5 from AliExpress/Amazon)
@@ -36,7 +36,7 @@ Submit the bug report with full technical details requesting a signed MV303 fix.
 
 ### ALL SOFTWARE-ONLY PATHS: EXHAUSTED (Session 7)
 
-Every software-only approach to deploying the firmware patch has been systematically tested and confirmed dead. The device's security model (MCUboot + RSA-2048 + no NVMC in app) is properly implemented and resists all known attacks. Hardware access (SWD) or vendor cooperation is required.
+Every software-only approach to deploying the firmware patch has been systematically tested and confirmed dead. The device's security model (MCUboot + RSA-2048 + no NVMC in app) is properly implemented and resists all known analysis methods. Hardware access (SWD) or vendor cooperation is required.
 
 ---
 
@@ -44,28 +44,28 @@ Every software-only approach to deploying the firmware patch has been systematic
 
 | Path | How Killed | Evidence |
 |------|-----------|----------|
-| NORDICKEYBOARD bypass | Not a separate protocol -- "55 AA" is just the enter-boot command | USB capture decode, confirmed Session 5 |
+| NORDICKEYBOARD workaround | Not a separate protocol -- "55 AA" is just the enter-boot command | USB capture decode, confirmed Session 5 |
 | ry_upgrade_PATCHED.exe | MCUboot rejects (RSA mismatch) | Direct test via official tool |
 | ry_upgrade_HASHONLY.exe | MCUboot rejects (RSA missing) | Direct test via official tool |
 | ry_upgrade_NOSIG.exe | MCUboot rejects (RSA missing) | Direct test via official tool |
 | Custom flasher with patched image | MCUboot rejects -- mouse stuck in boot, recovered | Direct flash test Session 5 |
 | BLE DFU/SMP over BLE | UUID not present in firmware (0xFE59 / SMP UUID absent) | Binary scan of app + BLE images |
 | NVS config toggle | No config strings exist -- behavior is hardcoded | Full string dump analysis |
-| loophole_flash version tricks | Only controls whether tool sends; device still validates | Tested multiple variants |
+| alternative_flash version tricks | Only controls whether tool sends; device still validates | Tested multiple variants |
 | MCUboot trailer forgery | Trailer is OUTPUT of validation, not input | MCUboot source analysis |
 | Protected TLV confusion | Circular hash dependency -- impossible | MCUboot source analysis |
 | Encryption TLV trick | RSA still checked after decryption | MCUboot source analysis |
 | Flash wear-out of key storage | Protocol only writes external SPI, not internal flash | Architecture analysis |
-| Bootloader hidden commands | ALL 254 BA XX commands brute-forced -- only BA FF/C0/C2 exist | Hardware test Session 6 (boot_bruteforce.py) |
+| Bootloader hidden commands | ALL 254 BA XX commands scanned -- only BA FF/C0/C2 exist | Hardware test Session 6 (boot_scan.py) |
 | BA FF mode byte unlock | All 256 values of byte[7] produce identical response | Hardware test Session 6 |
-| TLV manipulation bypass | All 9 variants (empty, SHA-only, wrong magic, etc.) accepted by bootloader but REJECTED by MCUboot at boot | Hardware test Session 6 (tlv_fuzzer.py) |
+| TLV manipulation workaround | All 9 variants (empty, SHA-only, wrong magic, etc.) accepted by bootloader but REJECTED by MCUboot at boot | Hardware test Session 6 (tlv_tester.py) |
 | RSA key recovery | Vendor-specific 2048-bit key (Ajazz/RuiYu), not a Nordic sample key, not crackable | Key extracted from EXE, KEYHASH confirmed |
-| HID buffer overflow | 1069 payloads, 0 crashes -- input parser is robust | Session 7: hid_fuzzer.py exhaustive test |
+| HID buffer overflow | 1069 payloads, 0 crashes -- input parser is robust | Session 7: hid_protocol_tester.py exhaustive test |
 | SMP Image Upload | Device echoes data verbatim, NOT actually processing uploads | Session 7: smp_upload.py test-chunk returns sent data |
 | SMP MCUmgr firmware path | Echo works but upload is stub -- shared HID buffer echo | Session 7: verified with unique strings |
-| YZW/FLASH responses | FALSE POSITIVES -- shared HID report buffer echo, not real protocols | Session 7: full_pentest.py Phase 6 analysis |
-| RSA-2048 key attack (12 methods) | All 12 cryptanalytic attacks failed -- key is properly generated | Session 7: rsa_attack.py (Fermat, Pollard, Wiener, etc.) |
-| Runtime HID exploitation | No exploitable overflow exists -- 60-byte frame is safe, parser validates bounds | Session 7: deep firmware analysis + 1069-payload fuzz |
+| YZW/FLASH responses | FALSE POSITIVES -- shared HID report buffer echo, not real protocols | Session 7: full_diagnostic.py Phase 6 analysis |
+| RSA-2048 key analysis (12 methods) | All 12 cryptanalytic methods failed -- key is properly generated | Session 7: rsa_analysis.py (Fermat, Pollard, Wiener, etc.) |
+| Runtime HID analysis | No viable overflow exists -- 60-byte frame is safe, parser validates bounds | Session 7: deep firmware analysis + 1069-payload test |
 
 ---
 
@@ -126,9 +126,9 @@ debug_toolkit/
   aj159_debug.py                # HID debug/config tool
   scan_mouse.py                 # Device scanner
   probe_reports.py              # HID report probing tool
-  boot_bruteforce.py            # Bootloader command brute-force (all 254 BA XX)
+  boot_scan.py                  # Bootloader command scanner (all 254 BA XX)
   extract_pubkey.py             # RSA public key extractor from EXE
-  tlv_fuzzer.py                 # MCUboot TLV variant fuzzer (9 attack variants)
+  tlv_tester.py                 # MCUboot TLV variant tester (9 test variants)
   mouse_capture2.pcap           # USB capture (mouse reports only, no flash protocol)
   mouse_capture3.pcap           # USB capture (FULL flash session with control transfers)
   support_config.json           # Ajazz support tool config (NORDICKEYBOARD entry)
@@ -156,12 +156,12 @@ README.md                       # Project overview
 - Created IPS patch and Python patcher
 - Attempted MCUboot flash variants (all rejected)
 
-### Session 2 — Flash Bypass Research
+### Session 2 -- Flash Workaround Research
 - Discovered NORDICKEYBOARD method in support_config.json
 - Modified config — different UI activates but "no upgrade needed"
 - Created version-bumped EXEs (all still rejected by device)
 
-### Session 3 — Version Bypass Attempts and Tooling
+### Session 3 -- Version Workaround Attempts and Tooling
 - Built debug toolkit, AutoHotkey workaround (later removed)
 - Wrote Ajazz bug report
 
@@ -177,7 +177,7 @@ README.md                       # Project overview
 - **Flashed patched image** -- data accepted, checksum verified
 - **MCUboot REJECTED** -- RSA-2048 enforcement confirmed by direct test
 - Mouse recovered with official tool
-- Completed deep exploit analysis -- ranked remaining vectors
+- Completed deep analysis -- ranked remaining vectors
 - Updated SESSION_LOG with definitive findings
 
 ### Session 6 -- Deep Analysis, Hardware Brute-Force, and Definitive Path Closure (CURRENT)
@@ -273,17 +273,17 @@ README.md                       # Project overview
 - **All 9 variants received `BA C2` OK** (data transfer accepted by bootloader)
 - **BUT: mouse remained in boot mode (PID 0x4025) between ALL variants**
 - This proves MCUboot REJECTED every variant at boot time
-- The `BA C2` acceptance only confirms data receipt to SPI flash -- MCUboot validation is separate and non-bypassable
+- The `BA C2` acceptance only confirms data receipt to SPI flash -- MCUboot validation is separate and cannot be circumvented
 
 #### Definitive Path Status Summary
 
 **DEAD paths (confirmed by hardware testing):**
 | Path | Method of Elimination |
 |------|----------------------|
-| Bootloader hidden commands | Exhaustive brute-force of all 254 BA XX values |
+| Bootloader hidden commands | Exhaustive scan of all 254 BA XX values |
 | BA FF mode byte unlock | All 256 byte values tested, all identical |
-| TLV manipulation bypass | 9 structural variants all rejected by MCUboot |
-| NORDICKEYBOARD bypass | Confirmed dead Session 5 (just the enter-boot command) |
+| TLV manipulation workaround | 9 structural variants all rejected by MCUboot |
+| NORDICKEYBOARD workaround | Confirmed dead Session 5 (just the enter-boot command) |
 | RSA key recovery | Vendor-specific 2048-bit key, computationally infeasible |
 | BLE DFU/SMP | UUIDs not present in firmware binary |
 | NVS config toggle | No config strings exist in firmware |
@@ -291,7 +291,7 @@ README.md                       # Project overview
 **ALIVE paths (remaining viable approaches):**
 | Path | Feasibility | Notes |
 |------|-------------|-------|
-| Runtime HID exploitation | Medium | Buffer overflow in SET_REPORT handler at 0x1C1A8, 60-byte stack frame |
+| Runtime HID analysis | Medium | Buffer overflow in SET_REPORT handler at 0x1C1A8, 60-byte stack frame |
 | SWD hardware access | High (with hardware) | $5 ST-Link V2 clone required |
 | Contact Ajazz for signed MV303 fix | High (slow) | Bug report ready in docs/ |
 
@@ -318,7 +318,7 @@ README.md                       # Project overview
 
 #### Phase 2: HID Fuzzing (1069 Payloads, 0 Crashes)
 
-- Created `debug_toolkit/hid_fuzzer.py` with comprehensive fuzzing strategy
+- Created `debug_toolkit/hid_protocol_tester.py` with comprehensive testing strategy
 - Tested categories:
   - Boundary values (0x00, 0xFF fills, incrementing patterns)
   - Valid report IDs with malformed data (0x04, 0x05, 0x06, 0x13-0x18)
@@ -330,13 +330,13 @@ README.md                       # Project overview
 - The HID input parser is robust -- validates bounds before processing
 - No buffer overflow exists in the SET_REPORT path
 
-#### Phase 3: Full 6-Phase Pentest
+#### Phase 3: Full 6-Phase Diagnostic
 
-- Created `debug_toolkit/full_pentest.py` -- comprehensive firmware update vector assessment
+- Created `debug_toolkit/full_diagnostic.py` -- comprehensive firmware update vector assessment
 - Phase 1 (Boot Protocol): Confirmed BA FF/C0/C2 only commands, no new discoveries
 - Phase 2 (Flash Manipulation): Tested truncated transfers, corrupt data -- bootloader resilient
 - Phase 3 (HID Overflow): Targeted the 60-byte stack frame at 0x1C1A8 -- no overflow
-- Phase 4 (MCUboot Bypass): Re-confirmed TLV manipulation has no effect
+- Phase 4 (MCUboot Workaround): Re-confirmed TLV manipulation has no effect
 - Phase 5 (Protocol Confusion): Tested NORDICKEYBOARD/FLASH/YZW protocol mixing
 - Phase 6 (Undocumented Features): Probed all SMP groups, custom vendor commands
 - **Critical Discovery:** Some commands appeared to get "responses" but these were FALSE POSITIVES caused by the shared HID feature report buffer echoing previous writes
@@ -357,13 +357,13 @@ README.md                       # Project overview
 
 #### Phase 5: RSA-2048 Key Attack (12 Methods, All Failed)
 
-- Created `debug_toolkit/rsa_attack.py` -- comprehensive cryptanalytic attack toolkit
+- Created `debug_toolkit/rsa_analysis.py` -- comprehensive cryptanalytic analysis toolkit
 - Attacks attempted:
   1. **Fermat factorization** -- primes are not close together
   2. **Pollard p-1** -- factors have large prime factors (B1 up to 1M)
   3. **Pollard rho** -- no small factors found (10M iterations)
   4. **Williams p+1** -- failed (proper large primes)
-  5. **Wiener's attack** -- d is not unusually small (continued fractions)
+  5. **Wiener's method** -- d is not unusually small (continued fractions)
   6. **Boneh-Durfee** -- not applicable (e=65537 is standard)
   7. **Common modulus** -- only one key in the system
   8. **Small prime check** -- tested first 100K primes, none divide N
@@ -371,7 +371,7 @@ README.md                       # Project overview
   10. **Fermat extended** -- 1M iterations, primes not close
   11. **Power detection** -- N is not a perfect power
   12. **Known weak key databases** -- not a Debian weak key, not in any DB
-- **Result: All 12 attacks failed. The RSA key is properly generated with strong random primes.**
+- **Result: All 12 methods failed. The RSA key is properly generated with strong random primes.**
 
 #### Phase 6: Firmware Signing Attempt
 
@@ -386,16 +386,16 @@ README.md                       # Project overview
 
 | Script | Location | Purpose |
 |--------|----------|---------|
-| hid_fuzzer.py | debug_toolkit/ | HID overflow fuzzing (1069 payloads) |
-| hid_deferred_probe.py | debug_toolkit/ | Deferred crash detection after fuzzing |
+| hid_protocol_tester.py | debug_toolkit/ | HID overflow testing (1069 payloads) |
+| hid_deferred_probe.py | debug_toolkit/ | Deferred crash detection after testing |
 | crash_analyzer.py | debug_toolkit/ | Post-fuzz crash analysis |
-| full_pentest.py | debug_toolkit/ | Complete 6-phase firmware update pentest |
-| rsa_attack.py | debug_toolkit/ | RSA-2048 cryptanalytic attack (12 methods) |
+| full_diagnostic.py | debug_toolkit/ | Complete 6-phase firmware update diagnostic |
+| rsa_analysis.py | debug_toolkit/ | RSA-2048 cryptanalytic analysis (12 methods) |
 | sign_firmware.py | debug_toolkit/ | MCUboot image signing tool |
 | smp_upload.py | debug_toolkit/ | SMP/MCUmgr firmware upload over HID |
 | fw_deeper_analysis.py | firmware_patch/ | Deep firmware binary analysis |
 | exe_deep_analysis.py | firmware_patch/ | EXE structure and key extraction |
-| EXPLOIT_TOOLKIT.md | docs/ | Comprehensive exploit toolkit documentation |
+| DIAGNOSTIC_TOOLKIT.md | docs/ | Comprehensive diagnostic toolkit documentation |
 
 ---
 
@@ -430,4 +430,4 @@ README.md                       # Project overview
 
 ---
 
-*All software-only exploitation paths are confirmed exhausted. Hardware (SWD) or vendor cooperation required for firmware-level fix.*
+*All software-only paths are confirmed exhausted. Hardware (SWD) or vendor cooperation required for firmware-level fix.*
