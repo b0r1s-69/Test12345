@@ -180,7 +180,7 @@ README.md                       # Project overview
 - Completed deep analysis -- ranked remaining vectors
 - Updated SESSION_LOG with definitive findings
 
-### Session 6 -- Deep Analysis, Hardware Brute-Force, and Definitive Path Closure (CURRENT)
+### Session 6 -- Deep Analysis, Hardware Command Scan, and Definitive Path Closure (CURRENT)
 
 #### PCAP Analysis: mouse_capture2.pcap
 - Contains ONLY interrupt transfers (mouse HID reports on EP81)
@@ -249,17 +249,17 @@ README.md                       # Project overview
 - KEYHASH found at 2 locations in EXE: 0x011BD38B (app image TLV) and 0x011EC1AF (BLE image TLV)
 - Private key NOT in EXE (as expected)
 
-#### Hardware Brute-Force: Bootloader Command Sweep
+#### Hardware Scan: Bootloader Command Sweep
 - ALL 254 `BA XX` commands (excluding C0/C2) return stale `AB FF` response (`abffdb06000000000000000000000000`)
 - Only `BA FF` actually updates the response buffer -- all others are ignored
 - **Conclusion: Only 3 commands exist (BA FF, BA C0, BA C2). No hidden commands.**
 
-#### Hardware Brute-Force: BA FF Mode Byte Sweep
+#### Hardware Scan: BA FF Mode Byte Sweep
 - All 256 values of byte[7] produce identical `AB FF` response
 - No hidden modes or behaviors discovered
 - **Conclusion: Mode byte has no effect on bootloader behavior**
 
-#### Hardware Testing: TLV Fuzzing (9 variants)
+#### Hardware Testing: TLV Variant Testing (9 variants)
 - Variants tested:
   1. EMPTY_TLV -- no TLV data at all
   2. SHA256_ONLY -- SHA256 hash but no signature
@@ -299,7 +299,7 @@ README.md                       # Project overview
 
 *Next session: Deep disassembly of SET_REPORT handler at 0x1C1A8 to identify buffer overflow vectors, or acquire ST-Link V2 for SWD access*
 
-### Session 7 -- Complete Software Path Exhaustion: HID Fuzzing, SMP Discovery, RSA Attack, Final Conclusion
+### Session 7 -- Complete Software Path Exhaustion: HID Protocol Testing, SMP Discovery, RSA Analysis, Final Conclusion
 
 **Date:** 2026-06-15
 
@@ -316,7 +316,7 @@ README.md                       # Project overview
 - Even if we achieved code execution via overflow, we could not patch MCUboot or write flash
 - Both MCUboot images in the EXE use the SAME RSA key (same KEYHASH at both locations)
 
-#### Phase 2: HID Fuzzing (1069 Payloads, 0 Crashes)
+#### Phase 2: HID Protocol Testing (1069 Payloads, 0 Crashes)
 
 - Created `debug_toolkit/hid_protocol_tester.py` with comprehensive testing strategy
 - Tested categories:
@@ -355,7 +355,7 @@ README.md                       # Project overview
 - **Image State query returns empty `{}`** -- no slot information available
 - **Conclusion:** SMP is partially implemented (echo for diagnostics) but firmware upload capability was never completed by the vendor
 
-#### Phase 5: RSA-2048 Key Attack (12 Methods, All Failed)
+#### Phase 5: RSA-2048 Key Analysis (12 Methods, All Failed)
 
 - Created `debug_toolkit/rsa_analysis.py` -- comprehensive cryptanalytic analysis toolkit
 - Attacks attempted:

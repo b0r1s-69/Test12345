@@ -1034,7 +1034,7 @@ def analyze_signature_verification(data, report):
 
 def generate_exe_conclusions(data, images, report):
     """Section 14: Conclusions from EXE analysis."""
-    report.append("## Section 14: Conclusions and Exploitation Paths")
+    report.append("## Section 14: Conclusions and Analysis Paths")
     report.append("")
     report.append("### Summary of Findings:")
     report.append("")
@@ -1042,7 +1042,7 @@ def generate_exe_conclusions(data, images, report):
     report.append(f"- MCUboot images found: {len(images)}")
     report.append(f"- Known RSA key at offset: {KNOWN_RSA_KEY_OFFSET:#x}")
     report.append("")
-    report.append("### Potential Exploitation Strategies:")
+    report.append("### Potential Analysis Strategies:")
     report.append("")
     report.append("1. **Method Substitution**: If NORDICKEYBOARD or FLASH methods have different")
     report.append("   security requirements, force the updater to use an alternative method")

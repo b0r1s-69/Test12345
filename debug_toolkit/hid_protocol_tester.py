@@ -911,7 +911,7 @@ Examples:
 
         # Final summary
         print(f"\n{'='*70}")
-        print(f"  FUZZING SUMMARY")
+        print(f"  TESTING SUMMARY")
         print(f"{'='*70}\n")
 
         total = len(all_results)

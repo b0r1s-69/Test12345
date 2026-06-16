@@ -547,15 +547,15 @@ def generate_analysis_report(crashes: List[CrashEvent],
         hard_crashes = [c for c in crashes if c.crash_type == 'hard']
         if hard_crashes:
             report['analysis_notes']['verdict'] = (
-                'EXPLOITABLE - device enters boot mode on crash, indicating '
+                'SIGNIFICANT - device enters boot mode on crash, indicating '
                 'control flow corruption. Next: identify exact register '
-                'overwritten and craft shellcode.'
+                'overwritten and analyze behavior.'
             )
         else:
             report['analysis_notes']['verdict'] = (
-                'POTENTIALLY EXPLOITABLE - crashes detected but device '
+                'POTENTIALLY SIGNIFICANT - crashes detected but device '
                 'recovers to normal mode. May need more precise payload '
-                'to achieve code execution vs simple fault.'
+                'to achieve different behavior vs simple fault.'
             )
     else:
         report['analysis_notes']['verdict'] = (
@@ -930,7 +930,7 @@ Examples:
         report = generate_analysis_report(crashes)
         with open(args.report, 'w') as f:
             json.dump(report, f, indent=2)
-        print(f"\n  [*] Exploit report saved to: {args.report}")
+        print(f"\n  [*] Analysis report saved to: {args.report}")
     elif args.report and not crashes:
         print(f"\n  No crashes to report.")
 
