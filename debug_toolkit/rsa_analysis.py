@@ -1125,7 +1125,7 @@ METHODS: Dict[str, Dict[str, Any]] = {
     "p-1": {
         "name": "Pollard's p-1",
         "func": method_pollard_p1,
-        "description": "Exploit B-smooth p-1",
+        "description": "Leverages B-smooth p-1",
         "order": 3,
     },
     "rho": {
@@ -1137,7 +1137,7 @@ METHODS: Dict[str, Dict[str, Any]] = {
     "p+1": {
         "name": "Williams' p+1",
         "func": method_williams_p1,
-        "description": "Exploit B-smooth p+1",
+        "description": "Leverages B-smooth p+1",
         "order": 5,
     },
     "wiener": {

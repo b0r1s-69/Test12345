@@ -1079,9 +1079,9 @@ def section_9_stack_overflow(data):
 
 
 def section_10_attack_surface(data):
-    """Section 10 - Attack Surface Summary"""
+    """Section 10 - Interface Analysis Summary"""
     lines = []
-    lines.append("## Section 10: Attack Surface Summary\n")
+    lines.append("## Section 10: Interface Analysis Summary\n")
 
     lines.append("### Input Vectors")
     lines.append("")
@@ -1107,9 +1107,9 @@ def section_10_attack_surface(data):
     lines.append("There is minimal input validation beyond the report ID bounds check.")
     lines.append("")
 
-    lines.append("### Potential Exploitation Vectors")
+    lines.append("### Potential Test Vectors")
     lines.append("")
-    lines.append("| # | Vector | Risk | Exploitability | Details |")
+    lines.append("| # | Vector | Risk | Testability | Details |")
     lines.append("|---|--------|------|----------------|---------|")
     lines.append("| 1 | Stack buffer overflow in SET_REPORT | HIGH | Medium-High | 60-byte stack buffer with 64-byte input. No stack canaries, no ASLR, no XN. |")
     lines.append("| 2 | Unvalidated report ID dispatch | MEDIUM | Medium | Report IDs 0x13-0x18 may have less-tested code paths |")
@@ -1119,7 +1119,7 @@ def section_10_attack_surface(data):
     lines.append("| 6 | Integer overflow in size calculations | MEDIUM | Low | Would need specific size field parsing bugs |")
     lines.append("")
 
-    lines.append("### Exploitation Requirements")
+    lines.append("### Testing Requirements")
     lines.append("")
     lines.append("For stack buffer overflow (Vector #1):")
     lines.append("")
@@ -1390,7 +1390,7 @@ def main():
     print("[*] Section 9: Stack Overflow Analysis...")
     report_sections.append(section_9_stack_overflow(data))
 
-    print("[*] Section 10: Attack Surface...")
+    print("[*] Section 10: Interface Analysis...")
     report_sections.append(section_10_attack_surface(data))
 
     print("[*] Section 11: Peripheral References...")

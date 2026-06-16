@@ -154,7 +154,7 @@ def read_response(device, timeout_ms: int = 200) -> Optional[bytes]:
 
 
 # ===========================================================================
-# Brute-Force Logic
+# Scan Logic
 # ===========================================================================
 
 def scan_commands(device, timeout_ms: int, skip_known: bool, verbose: bool):

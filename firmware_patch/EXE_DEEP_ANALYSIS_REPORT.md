@@ -721,7 +721,7 @@ This could reveal bypass opportunities in the host-side tool.
 
 - `valid image`: 1 at ['0x12aa7be']
 
-## Section 14: Conclusions and Exploitation Paths
+## Section 14: Conclusions and Analysis Paths
 
 ### Summary of Findings:
 
@@ -729,7 +729,7 @@ This could reveal bypass opportunities in the host-side tool.
 - MCUboot images found: 3
 - Known RSA key at offset: 0x119b47f
 
-### Potential Exploitation Strategies:
+### Potential Analysis Strategies:
 
 1. **Method Substitution**: If NORDICKEYBOARD or FLASH methods have different
    security requirements, force the updater to use an alternative method

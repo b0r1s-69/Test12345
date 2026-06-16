@@ -3550,9 +3550,9 @@ Based on this deeper analysis:
 4. **SPI Flash**: External SPI flash access could be used to write to the MCUboot secondary slot
 5. **Patch Range References**: Whether the firmware ever references its own code at the patch location
 
-### Potential New Attack Vectors
+### Potential New Analysis Vectors
 
-1. **Flash Driver Exploitation**: If the Zephyr flash driver is accessible through indirect calls,
+1. **Flash Driver Analysis**: If the Zephyr flash driver is accessible through indirect calls,
    it may be possible to trigger a flash write through a legitimate API path
 2. **SPI Secondary Slot**: Writing a new image to the SPI flash secondary slot could trigger MCUboot swap
 3. **Image Swap Trigger**: If MCUboot's image swap can be triggered through app firmware,
