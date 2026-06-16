@@ -1023,6 +1023,7 @@ def method_boneh_durfee(n: int, timeout: int, **kwargs) -> Optional[Tuple[int, i
                         return (p, q)
 
         print("    No Boneh-Durfee weakness detected (full lattice method not available)")
+        # External reference (third-party repo name)
         print("    For full method, use: https://github.com/mimoo/RSA-and-LLL-attacks")
         timer.__exit__()
         return None
